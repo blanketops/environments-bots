@@ -159,15 +159,18 @@ type Issue struct {
 	PullRequest *struct{} `json:"pull_request,omitempty"`
 }
 
-// ListIssues returns every issue, open or closed, carrying label. It
-// follows the Link header's next page until there is none.
+// ListIssues returns every issue, open or closed, carrying label (every
+// issue when label is empty). It follows the Link header's next page until
+// there is none.
 func (c *Client) ListIssues(ctx context.Context, label string) ([]Issue, error) {
 	const perPage = 100
 	var all []Issue
 	for page := 1; ; page++ {
 		q := url.Values{}
 		q.Set("state", "all")
-		q.Set("labels", label)
+		if label != "" {
+			q.Set("labels", label)
+		}
 		q.Set("per_page", fmt.Sprint(perPage))
 		q.Set("page", fmt.Sprint(page))
 		var batch []Issue

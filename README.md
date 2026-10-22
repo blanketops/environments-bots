@@ -7,6 +7,7 @@ otherwise do in inline shell.
 | Part | What it does | Status |
 |---|---|---|
 | `test-helper` | Keeps one GitHub issue per test file under `tests/` and posts every test run's results to it, with a link to the run | `sync` and `report` work; not released yet |
+| `releaser` | Keeps every release attached to its Release issue on the project board: checks the version and the release's contents before the release, attaches the tag and the GitHub release after it | `prepare`, `verify` and `complete` work and run in this repository's release workflows; not released yet |
 
 ## Why
 
@@ -24,9 +25,9 @@ Nothing is released yet. CI and the release workflows are in place.
 |---|---|---|
 | CI (`ci.yml`) | push, pull request | Build; gofmt, vet, golangci-lint and tests with coverage; code docs to `docs/code/` on `main` |
 | Security (`security.yml`) | weekly schedule, manual | CodeQL, OpenSSF Scorecard, govulncheck (report-only) |
-| Create Release (`create-release.yml`) | manual, input `version` | Cuts `release/<version>` from `develop` and opens its pull request into `main` |
-| Finalize Release (`finalize-release.yml`) | manual, input `version` | Merges the release, commits code docs and `CHANGELOG.md` to `main`, tags, merges `main` back into `develop` |
-| Release (`release.yml`) | `v*` tag | Builds every tool under `cmd/` for linux/amd64 and linux/arm64, signs each with Cosign, attests build provenance, publishes the GitHub Release |
+| Create Release (`create-release.yml`) | manual, input `version` | Runs `releaser prepare`, then cuts `release/<version>` from `develop` and opens its pull request into `main` |
+| Finalize Release (`finalize-release.yml`) | manual, input `version` | Runs `releaser verify`, then merges the release, commits code docs and `CHANGELOG.md` to `main`, tags, merges `main` back into `develop` |
+| Release (`release.yml`) | `v*` tag | Builds every tool under `cmd/` for linux/amd64 and linux/arm64, signs each with Cosign, attests build provenance, publishes the GitHub Release, then runs `releaser complete` (also when a step before it failed) |
 
 Jobs run on the repository's self-hosted runner pool (`runs-on:
 self-hosted`).
@@ -64,6 +65,34 @@ Everything taken from test files and test output (names, messages) is
 written inside code spans or code blocks, so it cannot mention users or break
 the markdown around it.
 
+## releaser
+
+A Release issue is titled `Release: vX.Y.Z` and labelled `release`. On the
+project board it has Status `Release` until the release is published, then
+`Done`. Each command comments its checks on the issue and exits 1 when one
+fails; a failed release leaves its issue open with the reason.
+
+| Command | When | What it checks and does |
+|---|---|---|
+| `releaser prepare -release vX.Y.Z [-ref develop]` | Before the release branch is cut | The version is not tagged and is the next patch, minor or major after the latest tag; there are commits since that tag; the bump is at least what the commits need; there is at most one Release issue and it is open; every item of a milestone named after the version is closed. Opens the issue if there is none (never for a version that fails the version check), puts it on the board as `Release`, and lists the release's commits. Warns about other open Release issues at or below the latest tag and about commits that are not Conventional Commits. |
+| `releaser verify -release vX.Y.Z` | Before the release branch is finalized | The version is not tagged yet; exactly one open Release issue; no pull request still open into `release/<version>`; no open item in the version's milestone. |
+| `releaser complete -release vX.Y.Z` | After the GitHub release is published | The tag exists and a published GitHub release exists for it. Comments the release, the tagged commit and the merged release pull request on the issue, closes it, sets it to `Done`, and closes the milestone when it has no open item. Opens the issue first if the release has none. |
+
+The bump a release needs follows Conventional Commits and Semantic
+Versioning. From v1.0.0 on, a breaking change (`type!:` or a
+`BREAKING CHANGE:` footer) needs a major release, a `feat` a minor one, and
+anything else a patch. Before v1.0.0 a breaking change needs a minor release
+and everything else a patch. A larger bump than needed is accepted; a skipped
+version (v0.8.7 to v0.8.9) is not.
+
+`-project blanketops/1` keeps the issue on the board; `-dry-run` reads only.
+The token comes from `GH_TOKEN` (or `GITHUB_TOKEN`); the workflows mint one
+for the BlanketOps Environments Releaser App (secrets `RELEASER_APP_ID` and
+`RELEASER_APP_PRIVATE_KEY`), which has Issues and organization Projects read
+and write, and Contents, Pull requests and Actions read only: it never cuts,
+merges or tags a release itself. Commit subjects and issue titles are written
+inside code spans.
+
 ## Security
 
 The tools act on GitHub through an App installation token passed in by the
@@ -79,12 +108,13 @@ as described in [SECURITY.md](SECURITY.md).
 | `go test ./...` | Unit tests |
 | `golangci-lint run` | Lint (the runner image ships the version CI uses) |
 | `go run ./cmd/test-helper sync -dry-run -root <checkout> -repo <owner/name>` | Run test-helper from source against a checkout, read-only |
+| `go run ./cmd/releaser prepare -dry-run -release <vX.Y.Z> -repo <owner/name>` | Check a planned release from source, read-only |
 
 ## Releases
 
-Each tag `vX.Y.Z` publishes `test-helper-linux-amd64` and
-`test-helper-linux-arm64`, a `SHA256SUMS` file, and a Sigstore bundle per
-file. Verify a download:
+Each tag `vX.Y.Z` publishes `<tool>-linux-amd64` and `<tool>-linux-arm64`
+for every tool (`test-helper`, `releaser`), a `SHA256SUMS` file, and a
+Sigstore bundle per file. Verify a download:
 
 ```
 cosign verify-blob --bundle test-helper-linux-amd64.sigstore.json \
