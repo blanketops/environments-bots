@@ -103,7 +103,7 @@ func New(owner, repo, token string) *Server {
 		RefCommits:    map[string][]Commit{},
 		Releases:      map[string]Release{},
 		Branches:      map[string]string{},
-		Login: "blanketops-environments-releaser[bot]",
+		Login:         "blanketops-environments-releaser[bot]",
 	}
 	s.Server = httptest.NewServer(http.HandlerFunc(s.handle))
 	return s
