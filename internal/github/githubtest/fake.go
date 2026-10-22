@@ -38,6 +38,11 @@ type Issue struct {
 	Comments []string
 	// PR marks a pull request, which the issues list also returns.
 	PR bool
+	// Milestone is the number of the issue's milestone; 0 for none.
+	Milestone int
+	// Author is the login of whoever opened it; issues created through
+	// the API get the server's Login.
+	Author string
 }
 
 // ProjectItem is an issue added to the fake project.
@@ -62,8 +67,8 @@ type Server struct {
 	ProjectNumber int
 	StatusOptions map[string]string
 	Items         []ProjectItem
-	// FailPaths makes requests whose "METHOD path" starts with a key fail
-	// with that status.
+	// FailPaths makes requests whose "METHOD path" or "METHOD path?query"
+	// starts with a key fail with that status.
 	FailPaths map[string]int
 	// GraphQLError, if set, is returned as a GraphQL error for every query.
 	GraphQLError string
@@ -72,6 +77,17 @@ type Server struct {
 	// PerPage overrides the page size the fake uses for issue lists (the
 	// client always asks for 100); 0 keeps the request's per_page.
 	PerPage int
+
+	// Release data; see release.go.
+	Tags       []Tag
+	Compares   map[string][]Commit // "base...head" -> commits, oldest first
+	RefCommits map[string][]Commit // ref -> commits, newest first
+	Releases   map[string]Release  // tag -> published release
+	Milestones []*Milestone
+	Pulls      []Pull
+	Branches   map[string]string // branch -> commit
+	// Login is the author of issues created through the API (the App\'s bot).
+	Login string
 }
 
 // New starts a fake for owner/repo that requires token (empty: any).
@@ -83,6 +99,11 @@ func New(owner, repo, token string) *Server {
 		ProjectNumber: 1,
 		StatusOptions: map[string]string{"Backlog": "opt-backlog", "Test": "opt-test"},
 		FailPaths:     map[string]int{},
+		Compares:      map[string][]Commit{},
+		RefCommits:    map[string][]Commit{},
+		Releases:      map[string]Release{},
+		Branches:      map[string]string{},
+		Login:         "blanketops-environments-releaser[bot]",
 	}
 	s.Server = httptest.NewServer(http.HandlerFunc(s.handle))
 	return s
@@ -118,6 +139,7 @@ func (s *Server) issueJSON(is *Issue) map[string]any {
 	m := map[string]any{
 		"number": is.Number, "title": is.Title, "state": is.State,
 		"node_id": nodeID(is.Number), "html_url": fmt.Sprintf("https://github.example/%s/%s/issues/%d", s.Owner, s.Repo, is.Number),
+		"user": map[string]string{"login": is.Author},
 	}
 	if is.PR {
 		m["pull_request"] = map[string]any{}
@@ -136,8 +158,9 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	defer s.mu.Unlock()
 	key := r.Method + " " + r.URL.Path
 	s.Requests = append(s.Requests, key)
+	withQuery := r.Method + " " + r.URL.RequestURI()
 	for prefix, status := range s.FailPaths {
-		if strings.HasPrefix(key, prefix) {
+		if strings.HasPrefix(key, prefix) || strings.HasPrefix(withQuery, prefix) {
 			write(w, status, map[string]string{"message": "injected failure"})
 			return
 		}
@@ -165,7 +188,7 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 			Labels      []string
 		}
 		_ = json.NewDecoder(r.Body).Decode(&in)
-		is := &Issue{Number: len(s.Issues) + 1, Title: in.Title, Body: in.Body, State: "open", Labels: in.Labels}
+		is := &Issue{Number: len(s.Issues) + 1, Title: in.Title, Body: in.Body, State: "open", Labels: in.Labels, Author: s.Login}
 		s.Issues = append(s.Issues, is)
 		write(w, http.StatusCreated, s.issueJSON(is))
 	case r.Method == http.MethodPost && strings.HasPrefix(rest, "/issues/") && strings.HasSuffix(rest, "/comments"):
@@ -192,6 +215,7 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&in)
 		s.Labels[in.Name] = true
 		write(w, http.StatusCreated, map[string]string{"name": in.Name})
+	case s.handleRelease(w, r, rest):
 	default:
 		write(w, http.StatusNotFound, map[string]string{"message": "Not Found"})
 	}
@@ -210,6 +234,9 @@ func (s *Server) listIssues(w http.ResponseWriter, q url.Values) {
 	var matched []map[string]any
 	for _, is := range s.Issues {
 		if q.Get("state") != "all" && is.State != "open" {
+			continue
+		}
+		if m := q.Get("milestone"); m != "" && strconv.Itoa(is.Milestone) != m {
 			continue
 		}
 		has := label == ""

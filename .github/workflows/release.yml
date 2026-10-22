@@ -18,6 +18,8 @@
 #   APP_ID, APP_PRIVATE_KEY — GitHub App credentials, exchanged for a
 #   short-lived installation token, used to check out main and publish the
 #   release.
+#   RELEASER_APP_ID, RELEASER_APP_PRIVATE_KEY — the BlanketOps Environments
+#   Releaser App, which runs cmd/releaser on the Release issue
 # =============================================================================
 
 name: Release
@@ -58,6 +60,11 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+
+      # Built first so that the last step can attach the release to its
+      # Release issue, or report on it what failed, whatever happens between.
+      - name: Build releaser
+        run: go build -o "${RUNNER_TEMP}/releaser" ./cmd/releaser
 
       - name: Tool versions
         run: |
@@ -153,3 +160,24 @@ jobs:
             echo "gh attestation verify test-helper-linux-amd64 --repo ${GITHUB_REPOSITORY}"
             echo "\`\`\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # The releaser (cmd/releaser), as the Releaser App, attaches the tag and
+      # the published release to the Release issue, closes it and sets it to
+      # Done on the board. It runs even when a step above failed: then it
+      # finds no published release and says so on the issue, which stays
+      # open.
+      - name: Generate Releaser App token
+        id: releaser-token
+        if: always()
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.RELEASER_APP_ID }}
+          private-key: ${{ secrets.RELEASER_APP_PRIVATE_KEY }}
+          owner: blanketops
+          repositories: environments-bots
+
+      - name: Releaser complete
+        if: always()
+        env:
+          GH_TOKEN: ${{ steps.releaser-token.outputs.token }}
+        run: '"${RUNNER_TEMP}/releaser" complete -release "${VERSION}" -project blanketops/1'

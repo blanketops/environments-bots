@@ -1,16 +1,27 @@
 # =============================================================================
 # create-release.yml — Cut a Release Branch
 #
-# Manually triggered. Branches release/{version} off develop, pushes it,
-# and opens a PR into main. Fix PRs land on the release branch; once ready,
-# run the Finalize Release workflow.
+# Manually triggered. The releaser (cmd/releaser cut), as the BlanketOps
+# Environments Releaser App, checks the release and, when every check
+# passes, creates release/{version} at develop's head and opens its pull
+# request into main. It records each check on the Release issue
+# ("Release: {version}", on project 1 as Release), opening the issue if
+# Plan Release has not already.
 #
-# Auth:
-#   Uses the BlanketOps-Environments GitHub App instead of a personal-account
-#   PAT — see ci.yml's header for the reasoning.
+# The version input is optional: empty releases the planned Release issue,
+# or else the version the commits since the latest tag need. Fix PRs land
+# on the release branch; once ready, run the Finalize Release workflow,
+# which merges and tags. The Release workflow then attaches the published
+# release to the issue and closes it.
+#
+# The branch is created through the API at an existing develop commit, so
+# no commit is made and none has to be signed. A rerun leaves an existing
+# branch and pull request as they are.
 #
 # Secrets required:
-#   APP_ID, APP_PRIVATE_KEY — GitHub App credentials
+#   RELEASER_APP_ID, RELEASER_APP_PRIVATE_KEY — the BlanketOps Environments
+#   Releaser App (Contents and Pull requests write, Issues and organization
+#   Projects write)
 # =============================================================================
 
 name: Create Release
@@ -19,23 +30,28 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version (e.g. v0.0.9)"
-        required: true
+        description: "Release version (e.g. v0.0.9); empty for the planned release"
+        required: false
 
 permissions:
   contents: read
 
+concurrency:
+  group: release-plan-and-cut
+  cancel-in-progress: false
+
 jobs:
   create:
+    name: releaser cut
     runs-on: self-hosted
 
     steps:
-      - name: Generate GitHub App token
-        id: app-token
+      - name: Generate Releaser App token
+        id: releaser-token
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          app-id: ${{ secrets.RELEASER_APP_ID }}
+          private-key: ${{ secrets.RELEASER_APP_PRIVATE_KEY }}
           owner: blanketops
           repositories: environments-bots
 
@@ -43,67 +59,19 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: develop
-          fetch-depth: 0
-          token: ${{ steps.app-token.outputs.token }}
 
-      - name: Configure git
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
 
-      - name: Create release branch
-        run: |
-          git checkout -b release/${{ github.event.inputs.version }}
-          git push origin release/${{ github.event.inputs.version }}
+      - name: Build releaser
+        run: go build -o "${RUNNER_TEMP}/releaser" ./cmd/releaser
 
-      # Through the API with curl: the runners have no gh.
-      - name: Open PR to main
+      - name: Releaser cut
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ steps.releaser-token.outputs.token }}
           VERSION: ${{ github.event.inputs.version }}
         run: |
-          body="## Release ${VERSION}
-
-          Release branch cut from \`develop\`. Merge fix PRs into this branch before finalizing.
-
-          **Next step:** once all fixes are merged, run the _Finalize Release_ workflow."
-          status=$(jq -n \
-              --arg title "release: ${VERSION}" \
-              --arg head "release/${VERSION}" \
-              --arg body "$body" \
-              '{title: $title, head: $head, base: "main", body: $body}' \
-            | curl -sS -o "${RUNNER_TEMP}/pr.json" -w '%{http_code}' -X POST \
-                -H "Authorization: bearer ${GH_TOKEN}" \
-                -H "Accept: application/vnd.github+json" \
-                --data-binary @- \
-                "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/pulls")
-          if [ "$status" = 201 ]; then
-            echo "Opened $(jq -r '.html_url' "${RUNNER_TEMP}/pr.json")"
-          else
-            echo "::warning::PR creation failed (HTTP ${status}: $(jq -r '.message // empty' "${RUNNER_TEMP}/pr.json")) — branch release/${VERSION} was created successfully. Open the PR manually."
-          fi
-
-      - name: Release Summary
-        run: |
-          cat >> $GITHUB_STEP_SUMMARY <<EOF
-          # 🚀 Release Branch Created
-
-          **Version:** \`${{ github.event.inputs.version }}\`
-
-          ## Completed
-
-          - Checked out \`develop\`
-          - Created \`release/${{ github.event.inputs.version }}\`
-          - Pushed release branch to origin
-          - Opened (or attempted to open) a PR to \`main\`
-
-          ## Release Flow
-
-          develop → release/${{ github.event.inputs.version }} → main
-
-          ## Next Steps
-
-          1. Merge any release fixes into the release branch.
-          2. Validate the release candidate.
-          3. Run the **Finalize Release** workflow.
-          EOF
+          "${RUNNER_TEMP}/releaser" cut -ref develop -project blanketops/1 ${VERSION:+-release "$VERSION"}
