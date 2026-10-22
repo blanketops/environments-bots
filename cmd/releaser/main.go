@@ -13,10 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Command releaser keeps every release of a repository attached to its
+// Command releaser drives every release of a repository through its
 // Release issue ("Release: vX.Y.Z", label release) on the project board.
 //
-//	releaser prepare    before the release branch is cut
+//	releaser plan       on every push to develop: plan the next release
+//	releaser cut        cut the release branch and its pull request
+//	releaser prepare    the checks of cut, without cutting
 //	releaser verify     before the release branch is finalized
 //	releaser complete   after the GitHub release is published
 //
@@ -45,15 +47,21 @@ import (
 // -ldflags "-X main.version=<tag>".
 var version = "dev"
 
-const usage = `releaser keeps every release attached to its Release issue on the project board.
+const usage = `releaser drives every release through its Release issue on the project board.
 
 Usage:
-  releaser <command> -release vX.Y.Z [flags]
+  releaser <command> [-release vX.Y.Z] [flags]
 
 Commands:
-  prepare   Before the release branch is cut: check the version against the
-            latest tag and the commits (semantic versioning), open or reuse
-            the Release issue and put it on the board as Release
+  plan      When develop has changes no release carries yet, open the
+            Release issue for the version they need (or rename the planned
+            one when they need more), on the board as Release
+  cut       Check the release like prepare, then create release/<version>
+            from develop and open its pull request into main. -release is
+            optional: the planned release, else the version the commits need
+  prepare   The checks of cut without cutting: the version against the
+            latest tag and the commits (semantic versioning), one open
+            Release issue (opened if missing), the version's milestone
   verify    Before finalizing: nothing still open into the release branch
             or in the version's milestone
   complete  After the GitHub release is published: comment the tag and the
@@ -88,6 +96,10 @@ func run(args []string, stdout, stderr io.Writer, getenv func(string) string) in
 	case "help", "--help", "-h":
 		_, _ = fmt.Fprint(stdout, usage)
 		return 0
+	case "plan":
+		cmd = release.Plan
+	case "cut":
+		cmd = release.Cut
 	case "prepare":
 		cmd = release.Prepare
 	case "verify":
@@ -106,9 +118,15 @@ func runCommand(name string, cmd command, args []string, stdout, stderr io.Write
 	fs.SetOutput(stderr)
 	var opts release.Options
 	var repo, apiURL, summary, project string
-	fs.StringVar(&opts.Version, "release", "", "the release, vX.Y.Z (required)")
-	if name == "prepare" {
-		fs.StringVar(&opts.Ref, "ref", "develop", "branch the release is cut from")
+	switch name {
+	case "plan":
+	case "cut":
+		fs.StringVar(&opts.Version, "release", "", "the release, vX.Y.Z (default: the planned release, else the version the commits need)")
+	default:
+		fs.StringVar(&opts.Version, "release", "", "the release, vX.Y.Z (required)")
+	}
+	if name == "plan" || name == "cut" || name == "prepare" {
+		fs.StringVar(&opts.Ref, "ref", "develop", "branch releases are cut from")
 	}
 	fs.StringVar(&project, "project", "", "keep the Release issue on this organization project, as org/number (e.g. blanketops/1)")
 	fs.StringVar(&repo, "repo", getenv("GITHUB_REPOSITORY"), "repository as owner/name (default $GITHUB_REPOSITORY)")
@@ -126,7 +144,7 @@ func runCommand(name string, cmd command, args []string, stdout, stderr io.Write
 		_, _ = fmt.Fprintf(stderr, "releaser %s: unexpected argument %q\n", name, fs.Arg(0))
 		return 2
 	}
-	if opts.Version == "" {
+	if opts.Version == "" && name != "plan" && name != "cut" {
 		_, _ = fmt.Fprintf(stderr, "releaser %s: -release is required\n", name)
 		return 2
 	}

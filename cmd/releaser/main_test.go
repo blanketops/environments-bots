@@ -54,6 +54,8 @@ func TestUsage(t *testing.T) {
 		{"bad flag", []string{"verify", "-nope"}, 2, "", "-nope"},
 		{"extra argument", []string{"verify", "-release", "v0.0.1", "x"}, 2, "", `unexpected argument "x"`},
 		{"no release", []string{"verify"}, 2, "", "-release is required"},
+		{"plan takes no -release", []string{"plan", "-release", "v0.0.1"}, 2, "", "-release"},
+		{"complete takes no -ref", []string{"complete", "-release", "v0.0.1", "-ref", "x"}, 2, "", "-ref"},
 		{"bad project", []string{"verify", "-release", "v0.0.1", "-project", "blanketops"}, 2, "", "not org/number"},
 		{"no token", []string{"verify", "-release", "v0.0.1", "-repo", "o/r"}, 1, "", "no token"},
 		{"bad repo", []string{"verify", "-release", "v0.0.1", "-repo", "bad", "-dry-run"}, 1, "", "not owner/name"},
@@ -126,5 +128,29 @@ func TestEmitAndRunURL(t *testing.T) {
 	}
 	if runURL(env{}.get) != "" {
 		t.Error("runURL without env")
+	}
+}
+
+func TestPlanAndCut(t *testing.T) {
+	srv := githubtest.New("blanketops", "environments-bots", "tok")
+	t.Cleanup(srv.Close)
+	srv.StatusOptions["Release"] = "opt-release"
+	srv.RefCommits["develop"] = []githubtest.Commit{{SHA: "2222222", Message: "feat(releaser): add"}}
+	srv.Branches["develop"] = "devhead"
+	e := env{"GH_TOKEN": "tok", "GITHUB_REPOSITORY": "blanketops/environments-bots", "GITHUB_API_URL": srv.URL}
+
+	code, stdout, stderr := runCmd(t, e, "plan", "-project", "blanketops/1")
+	if code != 0 || !strings.Contains(stdout, "v0.0.1 plan: passed") || srv.Issue("Release: v0.0.1") == nil {
+		t.Fatalf("plan: %d\n%s\n%s", code, stdout, stderr)
+	}
+	if code, stdout, _ = runCmd(t, e, "plan"); code != 0 || !strings.Contains(stdout, "plans v0.0.1") {
+		t.Errorf("second plan: %d %s", code, stdout)
+	}
+	code, stdout, stderr = runCmd(t, e, "cut", "-project", "blanketops/1")
+	if code != 0 || srv.Branch("release/v0.0.1") != "devhead" || !strings.Contains(stdout, "v0.0.1 cut: passed") {
+		t.Fatalf("cut: %d\n%s\n%s", code, stdout, stderr)
+	}
+	if code, _, stderr = runCmd(t, e, "cut", "-release", "v0.0.3"); code != 1 || !strings.Contains(stderr, "Release order: #1 plans v0.0.1, which comes first") || srv.Branch("release/v0.0.3") != "" {
+		t.Errorf("cut past a planned release: %d %q", code, stderr)
 	}
 }

@@ -13,13 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package release keeps every release of a repository attached to its
+// Package release drives every release of a repository through its
 // Release issue ("Release: vX.Y.Z", label release) on the project board.
 //
-// Prepare runs before the release branch is cut, Verify before it is
-// finalized, and Complete after the GitHub release is published. Each
-// records its checks as a comment on the Release issue; a failed check
-// fails the command and leaves the issue open.
+// Plan notices that develop has changes no release carries yet and opens
+// the issue for the next version. Cut checks the release (Prepare) and
+// cuts its branch and pull request into main. A person finalizes the
+// release (merge and tag). Verify runs before that merge, and Complete,
+// after the GitHub release is published, attaches it to the issue and
+// closes it. Each records its checks as a comment on the Release issue; a
+// failed check fails the command and leaves the issue open.
 package release
 
 import (
@@ -65,6 +68,10 @@ type API interface {
 	OpenMilestoneItems(ctx context.Context, number int) ([]github.Issue, error)
 	CloseMilestone(ctx context.Context, number int) error
 	ListPulls(ctx context.Context, state, base, head string) ([]github.Pull, error)
+	BranchSHA(ctx context.Context, branch string) (string, error)
+	CreateBranch(ctx context.Context, branch, sha string) error
+	CreatePull(ctx context.Context, title, head, base, body string) (github.Pull, error)
+	RenameIssue(ctx context.Context, number int, title string) error
 }
 
 // Title is the title of the Release issue of v.
@@ -81,9 +88,10 @@ type ProjectRef struct {
 
 // Options control every command.
 type Options struct {
-	// Version is the release, vX.Y.Z.
+	// Version is the release, vX.Y.Z. Cut works it out when it is empty;
+	// Plan ignores it.
 	Version string
-	// Ref is the branch the release is cut from (Prepare only).
+	// Ref is the branch releases are cut from (Plan, Prepare, Cut).
 	Ref string
 	// Project, if set, is the board the Release issue is kept on.
 	Project *ProjectRef
@@ -103,9 +111,11 @@ type Check struct {
 // Stage names a command in comments and summaries.
 type Stage string
 
-// The three stages.
+// The stages, in the order a release goes through them.
 const (
+	StagePlan     Stage = "plan"
 	StagePrepare  Stage = "prepare"
+	StageCut      Stage = "cut"
 	StageVerify   Stage = "verify"
 	StageComplete Stage = "complete"
 )
@@ -128,6 +138,15 @@ type Result struct {
 	Checks       []Check
 	// Warnings do not fail the command.
 	Warnings []string
+	// Note says why Plan did nothing (nothing to release, a release in
+	// progress).
+	Note string
+	// RenamedFrom is the version Plan moved the planned issue away from.
+	RenamedFrom *semver.Version
+	// CutSHA is the commit Cut created the release branch at.
+	CutSHA string
+	// Ref is the branch releases are cut from.
+	Ref string
 	// Set by Complete.
 	Release   *github.Release
 	TagSHA    string
@@ -284,7 +303,7 @@ func start(stage Stage, opts Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Result{Stage: stage, Version: v, RunURL: opts.RunURL, DryRun: opts.DryRun}, nil
+	return &Result{Stage: stage, Version: v, Ref: opts.Ref, RunURL: opts.RunURL, DryRun: opts.DryRun}, nil
 }
 
 // Prepare checks that Version can be released from Ref and opens (or
@@ -295,6 +314,15 @@ func start(stage Stage, opts Options) (*Result, error) {
 // need, when the Release issue is duplicated or closed, or when the
 // version's milestone still has open items.
 func Prepare(ctx context.Context, api API, opts Options) (*Result, error) {
+	r, err := prepare(ctx, api, opts)
+	if err != nil {
+		return nil, err
+	}
+	return r, r.comment(ctx, api)
+}
+
+// prepare is Prepare without the comment.
+func prepare(ctx context.Context, api API, opts Options) (*Result, error) {
 	r, err := start(StagePrepare, opts)
 	if err != nil {
 		return nil, err
@@ -325,30 +353,10 @@ func Prepare(ctx context.Context, api API, opts Options) (*Result, error) {
 		}
 	}
 
-	var raw []github.Commit
-	if prev != nil {
-		raw, err = api.Compare(ctx, prev.String(), opts.Ref)
-	} else {
-		raw, err = api.ListCommits(ctx, opts.Ref)
-		for i, j := 0, len(raw)-1; i < j; i, j = i+1, j-1 {
-			raw[i], raw[j] = raw[j], raw[i]
-		}
-	}
+	commits, err := r.commitsSince(ctx, api, prev, opts.Ref)
 	if err != nil {
-		return nil, fmt.Errorf("commits of %s: %w", opts.Ref, err)
+		return nil, err
 	}
-	var commits []semver.Commit
-	for _, c := range raw {
-		pc := semver.ParseCommit(c.SHA, c.Message)
-		if pc.Merge {
-			continue
-		}
-		commits = append(commits, pc)
-		if !pc.Conventional() {
-			r.warn("%s does not follow Conventional Commits and is left out of the changelog: %s", short(pc.SHA), code(pc.Subject))
-		}
-	}
-	r.Commits = commits
 	if len(commits) == 0 {
 		r.check("Changes", false, "%s has no commits since %s; there is nothing to release", opts.Ref, prevName(prev))
 	} else {
@@ -370,6 +378,14 @@ func Prepare(ctx context.Context, api API, opts Options) (*Result, error) {
 		return nil, err
 	}
 	r.staleIssues(issues, prev)
+	// Releases go out in version order: a lower planned release comes first.
+	for _, is := range planned(issues, prev) {
+		if v := issueVersion(is); v.Compare(r.Version) < 0 {
+			versionOK = false
+			r.check("Release order", false, "#%d plans %s, which comes first: release it, or close it, before %s", is.Number, v, r.Version)
+			break
+		}
+	}
 	mine := issues[r.Version.String()]
 	switch {
 	case len(mine) > 1:
@@ -398,7 +414,274 @@ func Prepare(ctx context.Context, api API, opts Options) (*Result, error) {
 		return nil, err
 	}
 	r.board(ctx, api, opts.Project, StatusPlanned)
+	return r, nil
+}
+
+// commitsSince returns the non-merge commits on ref since prev (all of
+// ref's history when prev is nil), oldest first, records them on r and
+// warns about subjects that are not Conventional Commits.
+func (r *Result) commitsSince(ctx context.Context, api API, prev *semver.Version, ref string) ([]semver.Commit, error) {
+	var raw []github.Commit
+	var err error
+	if prev != nil {
+		raw, err = api.Compare(ctx, prev.String(), ref)
+	} else {
+		raw, err = api.ListCommits(ctx, ref)
+		for i, j := 0, len(raw)-1; i < j; i, j = i+1, j-1 {
+			raw[i], raw[j] = raw[j], raw[i]
+		}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("commits of %s: %w", ref, err)
+	}
+	var commits []semver.Commit
+	for _, c := range raw {
+		pc := semver.ParseCommit(c.SHA, c.Message)
+		if pc.Merge || c.Parents > 1 {
+			continue
+		}
+		commits = append(commits, pc)
+		if !pc.Conventional() {
+			r.warn("%s does not follow Conventional Commits and is left out of the changelog: %s", short(pc.SHA), code(pc.Subject))
+		}
+	}
+	r.Commits = commits
+	return commits, nil
+}
+
+// next is the version the commits need after prev: v0.0.1 for a first
+// release.
+func next(prev *semver.Version, commits []semver.Commit) semver.Version {
+	if prev == nil {
+		return semver.Version{Patch: 1}
+	}
+	return prev.Next(semver.Required(*prev, commits))
+}
+
+// planned returns the open Release issues of versions above prev (every
+// version when prev is nil), lowest version first.
+func planned(issues map[string][]github.Issue, prev *semver.Version) []github.Issue {
+	type entry struct {
+		v  semver.Version
+		is github.Issue
+	}
+	var es []entry
+	for k, list := range issues {
+		v, err := semver.Parse(k)
+		if err != nil || prev != nil && v.Compare(*prev) <= 0 {
+			continue
+		}
+		for _, is := range list {
+			if is.State == "open" {
+				es = append(es, entry{v, is})
+			}
+		}
+	}
+	sort.Slice(es, func(i, j int) bool {
+		if c := es[i].v.Compare(es[j].v); c != 0 {
+			return c < 0
+		}
+		return es[i].is.Number < es[j].is.Number
+	})
+	out := make([]github.Issue, len(es))
+	for i, e := range es {
+		out[i] = e.is
+	}
+	return out
+}
+
+func issueVersion(is github.Issue) semver.Version {
+	v, _ := semver.Parse(strings.TrimSpace(strings.TrimPrefix(is.Title, "Release: ")))
+	return v
+}
+
+// Plan notices that Ref has changes no release carries yet and keeps one
+// Release issue planned for them, on the board as Release.
+//
+// With nothing to release, or a planned release whose branch is already
+// cut, it does nothing. With no planned release it opens the issue for the
+// version the commits need. When the planned version no longer covers the
+// commits (a breaking change landed before its branch was cut), it renames
+// the issue to the version they need and says why.
+func Plan(ctx context.Context, api API, opts Options) (*Result, error) {
+	if opts.Ref == "" {
+		return nil, fmt.Errorf("no ref to release from")
+	}
+	r := &Result{Stage: StagePlan, Ref: opts.Ref, RunURL: opts.RunURL, DryRun: opts.DryRun}
+	tags, err := api.ListTags(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list tags: %w", err)
+	}
+	if v, ok := semver.Latest(tags); ok {
+		r.Previous = &v
+	}
+	commits, err := r.commitsSince(ctx, api, r.Previous, opts.Ref)
+	if err != nil {
+		return nil, err
+	}
+	if len(commits) == 0 {
+		r.Note = fmt.Sprintf("nothing to release: %s has no commits since %s", opts.Ref, prevName(r.Previous))
+		return r, nil
+	}
+	need := next(r.Previous, commits)
+	if r.Previous != nil {
+		r.Required = semver.Required(*r.Previous, commits)
+	}
+	issues, err := releaseIssues(ctx, api)
+	if err != nil {
+		return nil, err
+	}
+	r.staleIssues(issues, r.Previous)
+	open := planned(issues, r.Previous)
+	if len(open) == 0 {
+		return r, r.openPlanned(ctx, api, opts, need)
+	}
+	r.Issue, r.Version = open[0], issueVersion(open[0])
+	for _, other := range open[1:] {
+		r.warn("#%d (%s) is also planned; only %s is released next", other.Number, issueVersion(other), r.Version)
+	}
+	if _, err := api.BranchSHA(ctx, Branch(r.Version)); err == nil {
+		r.Note = fmt.Sprintf("%s is in progress on %s (#%d); finalize it before the next release is planned", r.Version, Branch(r.Version), r.Issue.Number)
+		return r, nil
+	} else if !github.IsNotFound(err) {
+		return nil, fmt.Errorf("branch %s: %w", Branch(r.Version), err)
+	}
+	if r.Version.Compare(need) >= 0 {
+		r.Note = fmt.Sprintf("#%d plans %s, which covers the %d commit(s) since %s", r.Issue.Number, r.Version, len(commits), prevName(r.Previous))
+		return r, nil
+	}
+	if len(issues[need.String()]) > 0 {
+		r.check("Version", false, "#%d plans %s but the commits need %s, and %s already has a Release issue (%s)",
+			r.Issue.Number, r.Version, need, need, numbers(issues[need.String()]))
+		return r, r.comment(ctx, api)
+	}
+	old := r.Version
+	r.RenamedFrom, r.Version = &old, need
+	r.check("Version", true, "moved from %s to %s: the commits need a %s release: %s", old, need, r.Required, needing(*r.Previous, commits, r.Required))
+	if !opts.DryRun {
+		if err := api.RenameIssue(ctx, r.Issue.Number, Title(need)); err != nil {
+			return nil, fmt.Errorf("rename #%d: %w", r.Issue.Number, err)
+		}
+		r.Issue.Title = Title(need)
+	}
 	return r, r.comment(ctx, api)
+}
+
+// openPlanned opens the Release issue of v and puts it on the board.
+func (r *Result) openPlanned(ctx context.Context, api API, opts Options, v semver.Version) error {
+	r.Version = v
+	if r.Previous != nil {
+		r.check("Version", true, "%s, the %s release the commits need after %s", v, r.Required, r.Previous)
+	} else {
+		r.check("Version", true, "%s, the first release", v)
+	}
+	if opts.DryRun {
+		r.check("Release issue", true, "would open %q", Title(v))
+		return nil
+	}
+	if err := api.EnsureLabel(ctx, Label, labelColor, "Tracks one release"); err != nil {
+		return fmt.Errorf("label %s: %w", Label, err)
+	}
+	is, err := api.CreateIssue(ctx, Title(v), IssueBody(v, opts.Ref), []string{Label})
+	if err != nil {
+		return fmt.Errorf("open %q: %w", Title(v), err)
+	}
+	r.Issue, r.IssueCreated = is, true
+	r.check("Release issue", true, "opened #%d", is.Number)
+	r.board(ctx, api, opts.Project, StatusPlanned)
+	return r.comment(ctx, api)
+}
+
+// Cut cuts the release: it runs Prepare's checks and, when they pass,
+// creates the release branch at Ref's head and opens its pull request into
+// main (both left as they are when they already exist, so a rerun is
+// safe). Without a Version it releases the planned Release issue, or the
+// version the commits need. Finalizing (merge and tag) stays with a
+// person.
+func Cut(ctx context.Context, api API, opts Options) (*Result, error) {
+	if opts.Ref == "" {
+		return nil, fmt.Errorf("no ref to release from")
+	}
+	if opts.Version == "" {
+		v, err := resolve(ctx, api, opts.Ref)
+		if err != nil {
+			return nil, err
+		}
+		opts.Version = v.String()
+	}
+	r, err := prepare(ctx, api, opts)
+	if err != nil {
+		return nil, err
+	}
+	r.Stage = StageCut
+	if r.Failed() {
+		return r, r.comment(ctx, api)
+	}
+	branch := Branch(r.Version)
+	_, err = api.BranchSHA(ctx, branch)
+	switch {
+	case err == nil:
+		r.check("Release branch", true, "%s already exists", code(branch))
+	case !github.IsNotFound(err):
+		return nil, fmt.Errorf("branch %s: %w", branch, err)
+	case opts.DryRun:
+		r.check("Release branch", true, "would create %s from %s", code(branch), code(opts.Ref))
+	default:
+		sha, err := api.BranchSHA(ctx, opts.Ref)
+		if err != nil {
+			return nil, fmt.Errorf("branch %s: %w", opts.Ref, err)
+		}
+		if err := api.CreateBranch(ctx, branch, sha); err != nil {
+			return nil, fmt.Errorf("create %s: %w", branch, err)
+		}
+		r.CutSHA = sha
+		r.check("Release branch", true, "created %s at %s from %s", code(branch), code(short(sha)), code(opts.Ref))
+	}
+	pulls, err := api.ListPulls(ctx, "open", MainBranch, branch)
+	if err != nil {
+		return nil, fmt.Errorf("release pull request: %w", err)
+	}
+	switch {
+	case len(pulls) > 0:
+		r.ReleasePR = &pulls[0]
+		r.check("Release pull request", true, "#%d is open", pulls[0].Number)
+	case opts.DryRun:
+		r.check("Release pull request", true, "would open one from %s into %s", code(branch), MainBranch)
+	default:
+		pr, err := api.CreatePull(ctx, "release: "+r.Version.String(), branch, MainBranch, PullBody(r))
+		if err != nil {
+			return nil, fmt.Errorf("open the release pull request: %w", err)
+		}
+		r.ReleasePR = &pr
+		r.check("Release pull request", true, "opened #%d", pr.Number)
+	}
+	return r, r.comment(ctx, api)
+}
+
+// resolve picks the version Cut releases when none is given: the planned
+// Release issue's, else the version the commits need.
+func resolve(ctx context.Context, api API, ref string) (semver.Version, error) {
+	tags, err := api.ListTags(ctx)
+	if err != nil {
+		return semver.Version{}, fmt.Errorf("list tags: %w", err)
+	}
+	var prev *semver.Version
+	if v, ok := semver.Latest(tags); ok {
+		prev = &v
+	}
+	issues, err := releaseIssues(ctx, api)
+	if err != nil {
+		return semver.Version{}, err
+	}
+	if open := planned(issues, prev); len(open) > 0 {
+		return issueVersion(open[0]), nil
+	}
+	var scratch Result
+	commits, err := scratch.commitsSince(ctx, api, prev, ref)
+	if err != nil {
+		return semver.Version{}, err
+	}
+	return next(prev, commits), nil
 }
 
 // staleIssues warns about open Release issues no release will close: their

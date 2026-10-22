@@ -26,8 +26,11 @@ import (
 // Tag is a stored tag.
 type Tag struct{ Name, SHA string }
 
-// Commit is a stored commit.
-type Commit struct{ SHA, Message string }
+// Commit is a stored commit; Parents above 1 makes it a merge commit.
+type Commit struct {
+	SHA, Message string
+	Parents      int
+}
 
 // Release is a stored, published release.
 type Release struct {
@@ -49,6 +52,14 @@ type Pull struct {
 	State      string
 	Base, Head string
 	Merged     bool
+	Body       string
+}
+
+// Branch returns the commit of a stored branch, or "".
+func (s *Server) Branch(name string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.Branches[name]
 }
 
 // AddMilestone stores an open milestone and returns its number.
@@ -63,7 +74,11 @@ func (s *Server) AddMilestone(title string) int {
 func commitsJSON(cs []Commit) []map[string]any {
 	out := []map[string]any{}
 	for _, c := range cs {
-		out = append(out, map[string]any{"sha": c.SHA, "commit": map[string]string{"message": c.Message}})
+		parents := []map[string]string{}
+		for i := 0; i < max(c.Parents, 1); i++ {
+			parents = append(parents, map[string]string{"sha": fmt.Sprintf("p%d", i)})
+		}
+		out = append(out, map[string]any{"sha": c.SHA, "commit": map[string]string{"message": c.Message}, "parents": parents})
 	}
 	return out
 }
@@ -103,6 +118,30 @@ func (s *Server) handleRelease(w http.ResponseWriter, r *http.Request, rest stri
 			return true
 		}
 		write(w, http.StatusOK, commitsJSON(cs))
+	case get && strings.HasPrefix(rest, "/git/ref/heads/"):
+		sha, ok := s.Branches[strings.TrimPrefix(rest, "/git/ref/heads/")]
+		if !ok {
+			notFound()
+			return true
+		}
+		write(w, http.StatusOK, map[string]any{"object": map[string]string{"sha": sha}})
+	case r.Method == http.MethodPost && rest == "/git/refs":
+		var in struct{ Ref, SHA string }
+		_ = json.NewDecoder(r.Body).Decode(&in)
+		name, ok := strings.CutPrefix(in.Ref, "refs/heads/")
+		if _, exists := s.Branches[name]; !ok || exists {
+			write(w, http.StatusUnprocessableEntity, map[string]string{"message": "Reference already exists"})
+			return true
+		}
+		s.Branches[name] = in.SHA
+		write(w, http.StatusCreated, map[string]any{"ref": in.Ref})
+	case r.Method == http.MethodPost && rest == "/pulls":
+		var in struct{ Title, Head, Base, Body string }
+		_ = json.NewDecoder(r.Body).Decode(&in)
+		p := Pull{Number: 100 + len(s.Pulls), Title: in.Title, State: "open", Base: in.Base, Head: in.Head, Body: in.Body}
+		s.Pulls = append(s.Pulls, p)
+		write(w, http.StatusCreated, map[string]any{"number": p.Number, "title": p.Title, "state": "open",
+			"html_url": fmt.Sprintf("https://github.example/%s/%s/pull/%d", s.Owner, s.Repo, p.Number)})
 	case get && strings.HasPrefix(rest, "/git/ref/tags/"):
 		name := strings.TrimPrefix(rest, "/git/ref/tags/")
 		for _, t := range s.Tags {
@@ -153,9 +192,14 @@ func (s *Server) handleRelease(w http.ResponseWriter, r *http.Request, rest stri
 			notFound()
 			return true
 		}
-		var in struct{ State string }
+		var in struct{ State, Title string }
 		_ = json.NewDecoder(r.Body).Decode(&in)
-		is.State = in.State
+		if in.State != "" {
+			is.State = in.State
+		}
+		if in.Title != "" {
+			is.Title = in.Title
+		}
 		write(w, http.StatusOK, s.issueJSON(is))
 	case get && rest == "/pulls":
 		q := r.URL.Query()

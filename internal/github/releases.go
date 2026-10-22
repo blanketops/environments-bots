@@ -74,10 +74,12 @@ func (c *Client) ListTags(ctx context.Context) ([]string, error) {
 	return names, nil
 }
 
-// Commit is a commit's SHA and full message.
+// Commit is a commit's SHA, full message and number of parents (more than
+// one for a merge commit, whatever its message says).
 type Commit struct {
 	SHA     string
 	Message string
+	Parents int
 }
 
 type apiCommit struct {
@@ -85,12 +87,15 @@ type apiCommit struct {
 	Commit struct {
 		Message string `json:"message"`
 	} `json:"commit"`
+	Parents []struct {
+		SHA string `json:"sha"`
+	} `json:"parents"`
 }
 
 func toCommits(in []apiCommit) []Commit {
 	out := make([]Commit, len(in))
 	for i, c := range in {
-		out[i] = Commit{SHA: c.SHA, Message: c.Commit.Message}
+		out[i] = Commit{SHA: c.SHA, Message: c.Commit.Message, Parents: len(c.Parents)}
 	}
 	return out
 }
@@ -202,4 +207,34 @@ func (c *Client) ListPulls(ctx context.Context, state, base, head string) ([]Pul
 		q.Set("head", c.Owner+":"+head)
 	}
 	return list[Pull](ctx, c, c.repoPath("/pulls"), q)
+}
+
+// BranchSHA returns the commit a branch points at; IsNotFound(err) when
+// there is no such branch.
+func (c *Client) BranchSHA(ctx context.Context, branch string) (string, error) {
+	var out struct {
+		Object struct{ SHA string } `json:"object"`
+	}
+	err := c.do(ctx, http.MethodGet, c.repoPath("/git/ref/heads/"+refPath(branch)), nil, &out)
+	return out.Object.SHA, err
+}
+
+// CreateBranch creates branch at commit sha. No commit is made, so the
+// branch carries only commits that already exist.
+func (c *Client) CreateBranch(ctx context.Context, branch, sha string) error {
+	in := map[string]string{"ref": "refs/heads/" + branch, "sha": sha}
+	return c.do(ctx, http.MethodPost, c.repoPath("/git/refs"), in, nil)
+}
+
+// CreatePull opens a pull request from head into base.
+func (c *Client) CreatePull(ctx context.Context, title, head, base, body string) (Pull, error) {
+	in := map[string]string{"title": title, "head": head, "base": base, "body": body}
+	var out Pull
+	err := c.do(ctx, http.MethodPost, c.repoPath("/pulls"), in, &out)
+	return out, err
+}
+
+// RenameIssue changes an issue's title.
+func (c *Client) RenameIssue(ctx context.Context, number int, title string) error {
+	return c.do(ctx, http.MethodPatch, c.repoPath(fmt.Sprintf("/issues/%d", number)), map[string]string{"title": title}, nil)
 }

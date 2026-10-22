@@ -67,8 +67,18 @@ func (r *Result) headline() string {
 		return fmt.Sprintf("%s found problems; this issue stays open until they are fixed and %s runs again", r.Stage, r.Stage)
 	}
 	switch r.Stage {
+	case StagePlan:
+		if r.RenamedFrom != nil {
+			return fmt.Sprintf("the planned release moved from %s to %s, as the commits need; the issue is renamed", r.RenamedFrom, r.Version)
+		}
+		return fmt.Sprintf("%s has changes no release carries yet: %s is planned. Run Create Release to cut %s", code(r.refOrDevelop()), r.Version, code(Branch(r.Version)))
 	case StagePrepare:
 		return "ready to cut " + code(Branch(r.Version))
+	case StageCut:
+		if r.DryRun {
+			return "ready to cut " + code(Branch(r.Version))
+		}
+		return fmt.Sprintf("%s is cut. When it is ready, run Finalize Release with version %s; the release is then attached here and this issue closed", code(Branch(r.Version)), code(r.Version.String()))
 	case StageVerify:
 		return "ready to finalize"
 	default:
@@ -95,7 +105,9 @@ func Comment(r *Result) string {
 		}
 		fmt.Fprintf(&b, "| [%s](%s) | %s at %s | %s |\n\n", r.Version, r.Release.HTMLURL, code(r.Version.String()), code(short(r.TagSHA)), pr)
 	}
-	b.WriteString("| Check | Result | Detail |\n| --- | --- | --- |\n")
+	if len(r.Checks) > 0 {
+		b.WriteString("| Check | Result | Detail |\n| --- | --- | --- |\n")
+	}
 	for _, c := range r.Checks {
 		res := "ok"
 		if !c.OK {
@@ -109,7 +121,7 @@ func Comment(r *Result) string {
 			fmt.Fprintf(&b, "- %s\n", w)
 		}
 	}
-	if r.Stage == StagePrepare && len(r.Commits) > 0 {
+	if (r.Stage == StagePrepare || r.Stage == StagePlan || r.Stage == StageCut) && len(r.Commits) > 0 {
 		b.WriteString(commitList(r.Commits))
 	}
 	if r.RunURL != "" {
@@ -163,9 +175,37 @@ func upperFirst(s string) string {
 	return strings.ToUpper(s[:1]) + s[1:]
 }
 
+// PullBody is the body of the release pull request Cut opens.
+func PullBody(r *Result) string {
+	issue := ""
+	if r.Issue.Number != 0 {
+		issue = fmt.Sprintf(" Tracked in #%d.", r.Issue.Number)
+	}
+	return fmt.Sprintf("Release %s, cut from %s at %s by releaser.%s\n\n"+
+		"Merge it with the Finalize Release workflow (version %s), not by hand: finalize merges this pull request, "+
+		"commits the code docs and the changelog, tags %s and merges main back into develop. "+
+		"Fixes for the release go into %s through their own pull requests first.\n",
+		code(r.Version.String()), code(r.refOrDevelop()), code(short(r.CutSHA)), issue,
+		code(r.Version.String()), code(r.Version.String()), code(Branch(r.Version)))
+}
+
+func (r *Result) refOrDevelop() string {
+	if r.Ref != "" {
+		return r.Ref
+	}
+	return "develop"
+}
+
 // Summary is the step summary of a command.
 func Summary(r *Result) string {
 	var b strings.Builder
+	if r.Note != "" {
+		fmt.Fprintf(&b, "### releaser %s\n\n%s.\n", r.Stage, upperFirst(r.Note))
+		for _, w := range r.Warnings {
+			fmt.Fprintf(&b, "\n- %s", w)
+		}
+		return b.String() + "\n"
+	}
 	b.WriteString(Comment(r))
 	switch {
 	case r.DryRun:

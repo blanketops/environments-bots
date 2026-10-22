@@ -82,6 +82,7 @@ type Server struct {
 	Releases   map[string]Release  // tag -> published release
 	Milestones []*Milestone
 	Pulls      []Pull
+	Branches   map[string]string // branch -> commit
 }
 
 // New starts a fake for owner/repo that requires token (empty: any).
@@ -96,6 +97,7 @@ func New(owner, repo, token string) *Server {
 		Compares:      map[string][]Commit{},
 		RefCommits:    map[string][]Commit{},
 		Releases:      map[string]Release{},
+		Branches:      map[string]string{},
 	}
 	s.Server = httptest.NewServer(http.HandlerFunc(s.handle))
 	return s
