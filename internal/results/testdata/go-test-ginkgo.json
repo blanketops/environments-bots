@@ -1,0 +1,38 @@
+{"Time":"2026-10-22T09:18:05.690412575+02:00","Action":"start","Package":"example.com/m/tests/suite"}
+{"Time":"2026-10-22T09:18:05.693387546+02:00","Action":"run","Package":"example.com/m/tests/suite","Test":"TestSuite"}
+{"Time":"2026-10-22T09:18:05.693428104+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"=== RUN   TestSuite\n","OutputType":"frame"}
+{"Time":"2026-10-22T09:18:05.693614331+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"Running Suite: Suite - /src/tests/suite\n"}
+{"Time":"2026-10-22T09:18:05.69362457+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"================================================================================\n"}
+{"Time":"2026-10-22T09:18:05.693628261+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"Random Seed: [1m1792653485[0m\n"}
+{"Time":"2026-10-22T09:18:05.693630086+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"\n"}
+{"Time":"2026-10-22T09:18:05.693632773+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"Will run [1m3[0m of [1m4[0m specs\n"}
+{"Time":"2026-10-22T09:18:05.69385622+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"[38;5;10m•[0m\n"}
+{"Time":"2026-10-22T09:18:05.693863075+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"[38;5;243m------------------------------[0m\n"}
+{"Time":"2026-10-22T09:18:05.69386566+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"[38;5;9m• [FAILED] [0.000 seconds][0m\n"}
+{"Time":"2026-10-22T09:18:05.693876895+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"[0mWidget [38;5;243mwhen built [38;5;9m[1m[It] fails[0m\n"}
+{"Time":"2026-10-22T09:18:05.693879063+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"[38;5;243m/src/tests/suite/specs_test.go:11[0m\n"}
+{"Time":"2026-10-22T09:18:05.693880858+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"\n"}
+{"Time":"2026-10-22T09:18:05.693883731+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"  [38;5;9m[FAILED] Expected\n"}
+{"Time":"2026-10-22T09:18:05.693885318+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"      \u003cint\u003e: 1\n"}
+{"Time":"2026-10-22T09:18:05.693887436+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"  to equal\n"}
+{"Time":"2026-10-22T09:18:05.693889359+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"      \u003cint\u003e: 2[0m\n"}
+{"Time":"2026-10-22T09:18:05.693905781+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"  [38;5;9mIn [1m[It][0m[38;5;9m at: [1m/src/tests/suite/specs_test.go:11[0m [38;5;243m@ 10/22/26 09:18:05.693[0m\n"}
+{"Time":"2026-10-22T09:18:05.693909937+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"[38;5;243m------------------------------[0m\n"}
+{"Time":"2026-10-22T09:18:05.693995756+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"[38;5;14mS[0m\n"}
+{"Time":"2026-10-22T09:18:05.69399774+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"[38;5;243m------------------------------[0m\n"}
+{"Time":"2026-10-22T09:18:05.694000071+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"[38;5;11mP [PENDING][0m\n"}
+{"Time":"2026-10-22T09:18:05.694003568+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"[0mWidget [38;5;243mwhen built [38;5;11m[1mis pending[0m\n"}
+{"Time":"2026-10-22T09:18:05.694010885+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"[38;5;243m/src/tests/suite/specs_test.go:13[0m\n"}
+{"Time":"2026-10-22T09:18:05.694013371+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"[38;5;243m------------------------------[0m\n"}
+{"Time":"2026-10-22T09:18:05.694468916+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"\n"}
+{"Time":"2026-10-22T09:18:05.694472428+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"[38;5;9m[1mSummarizing 1 Failure:[0m\n"}
+{"Time":"2026-10-22T09:18:05.69448375+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"  [38;5;9m[FAIL][0m [0mWidget [38;5;243mwhen built [38;5;9m[1m[It] fails[0m\n"}
+{"Time":"2026-10-22T09:18:05.694485959+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"  [38;5;243m/src/tests/suite/specs_test.go:11[0m\n"}
+{"Time":"2026-10-22T09:18:05.694488602+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"\n"}
+{"Time":"2026-10-22T09:18:05.694490836+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"[38;5;9m[1mRan 2 of 4 Specs in 0.000 seconds[0m\n"}
+{"Time":"2026-10-22T09:18:05.694494553+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"[38;5;9m[1mFAIL![0m -- [38;5;10m[1m1 Passed[0m | [38;5;9m[1m1 Failed[0m | [38;5;11m[1m1 Pending[0m | [38;5;14m[1m1 Skipped[0m\n"}
+{"Time":"2026-10-22T09:18:05.694505032+02:00","Action":"output","Package":"example.com/m/tests/suite","Test":"TestSuite","Output":"--- FAIL: TestSuite (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-22T09:18:05.694508062+02:00","Action":"fail","Package":"example.com/m/tests/suite","Test":"TestSuite","Elapsed":0}
+{"Time":"2026-10-22T09:18:05.694512869+02:00","Action":"output","Package":"example.com/m/tests/suite","Output":"FAIL\n","OutputType":"frame"}
+{"Time":"2026-10-22T09:18:05.694631257+02:00","Action":"output","Package":"example.com/m/tests/suite","Output":"FAIL\texample.com/m/tests/suite\t0.004s\n","OutputType":"frame"}
+{"Time":"2026-10-22T09:18:05.694643566+02:00","Action":"fail","Package":"example.com/m/tests/suite","Elapsed":0.004}

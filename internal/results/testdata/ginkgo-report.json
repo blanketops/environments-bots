@@ -1,0 +1,368 @@
+[
+  {
+    "SuitePath": "/src/tests/suite",
+    "SuiteDescription": "Suite",
+    "SuiteLabels": [],
+    "SuiteSemVerConstraints": [],
+    "SuiteComponentSemVerConstraints": {},
+    "SuiteSucceeded": false,
+    "SuiteHasProgrammaticFocus": false,
+    "SpecialSuiteFailureReasons": null,
+    "PreRunStats": {
+      "TotalSpecs": 4,
+      "SpecsThatWillRun": 3
+    },
+    "StartTime": "2026-10-22T09:18:05.693584892+02:00",
+    "EndTime": "2026-10-22T09:18:05.694005951+02:00",
+    "RunTime": 421053,
+    "SuiteConfig": {
+      "RandomSeed": 1792653485,
+      "RandomizeAllSpecs": false,
+      "FocusStrings": null,
+      "SkipStrings": null,
+      "FocusFiles": null,
+      "SkipFiles": null,
+      "LabelFilter": "",
+      "SemVerFilter": "",
+      "FailOnPending": false,
+      "FailOnEmpty": false,
+      "FailFast": false,
+      "FlakeAttempts": 0,
+      "MustPassRepeatedly": 0,
+      "DryRun": false,
+      "PollProgressAfter": 0,
+      "PollProgressInterval": 0,
+      "Timeout": 3600000000000,
+      "EmitSpecProgress": false,
+      "OutputInterceptorMode": "",
+      "SourceRoots": null,
+      "GracePeriod": 30000000000,
+      "ParallelProcess": 1,
+      "ParallelTotal": 1,
+      "ParallelHost": ""
+    },
+    "SpecReports": [
+      {
+        "ContainerHierarchyTexts": [
+          "Widget",
+          "when built"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/src/tests/suite/specs_test.go",
+            "LineNumber": 8
+          },
+          {
+            "FileName": "/src/tests/suite/specs_test.go",
+            "LineNumber": 9
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          [],
+          []
+        ],
+        "ContainerHierarchySemVerConstraints": [
+          [],
+          []
+        ],
+        "ContainerHierarchyComponentSemVerConstraints": [
+          {},
+          {}
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/src/tests/suite/specs_test.go",
+          "LineNumber": 10
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeSemVerConstraints": [],
+        "LeafNodeText": "passes",
+        "State": "passed",
+        "StartTime": "2026-10-22T09:18:05.693656915+02:00",
+        "EndTime": "2026-10-22T09:18:05.693697752+02:00",
+        "RunTime": 40839,
+        "ParallelProcess": 1,
+        "NumAttempts": 1,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0,
+        "SpecEvents": [
+          {
+            "SpecEventType": "Node",
+            "CodeLocation": {
+              "FileName": "/src/tests/suite/specs_test.go",
+              "LineNumber": 10
+            },
+            "TimelineLocation": {
+              "Order": 1,
+              "Time": "2026-10-22T09:18:05.69367431+02:00"
+            },
+            "Message": "passes",
+            "NodeType": "It"
+          },
+          {
+            "SpecEventType": "Node (End)",
+            "CodeLocation": {
+              "FileName": "/src/tests/suite/specs_test.go",
+              "LineNumber": 10
+            },
+            "TimelineLocation": {
+              "Order": 3,
+              "Time": "2026-10-22T09:18:05.69369567+02:00"
+            },
+            "Message": "passes",
+            "Duration": 21359,
+            "NodeType": "It"
+          }
+        ]
+      },
+      {
+        "ContainerHierarchyTexts": [
+          "Widget",
+          "when built"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/src/tests/suite/specs_test.go",
+            "LineNumber": 8
+          },
+          {
+            "FileName": "/src/tests/suite/specs_test.go",
+            "LineNumber": 9
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          [],
+          []
+        ],
+        "ContainerHierarchySemVerConstraints": [
+          [],
+          []
+        ],
+        "ContainerHierarchyComponentSemVerConstraints": [
+          {},
+          {}
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/src/tests/suite/specs_test.go",
+          "LineNumber": 11
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeSemVerConstraints": [],
+        "LeafNodeText": "fails",
+        "State": "failed",
+        "StartTime": "2026-10-22T09:18:05.693708577+02:00",
+        "EndTime": "2026-10-22T09:18:05.693843509+02:00",
+        "RunTime": 134935,
+        "ParallelProcess": 1,
+        "Failure": {
+          "Message": "Expected\n    \u003cint\u003e: 1\nto equal\n    \u003cint\u003e: 2",
+          "Location": {
+            "FileName": "/src/tests/suite/specs_test.go",
+            "LineNumber": 11,
+            "FullStackTrace": "example.com/m/tests/suite.init.func1.1.2()\n\t/src/tests/suite/specs_test.go:11 +0x7d"
+          },
+          "TimelineLocation": {
+            "Order": 5,
+            "Time": "2026-10-22T09:18:05.693838876+02:00"
+          },
+          "FailureNodeContext": "leaf-node",
+          "FailureNodeType": "It",
+          "FailureNodeLocation": {
+            "FileName": "/src/tests/suite/specs_test.go",
+            "LineNumber": 11
+          },
+          "ProgressReport": {
+            "LeafNodeLocation": {},
+            "SpecStartTime": "0001-01-01T00:00:00Z",
+            "CurrentNodeLocation": {},
+            "CurrentNodeStartTime": "0001-01-01T00:00:00Z",
+            "CurrentStepLocation": {},
+            "CurrentStepStartTime": "0001-01-01T00:00:00Z",
+            "TimelineLocation": {
+              "Time": "0001-01-01T00:00:00Z"
+            }
+          }
+        },
+        "NumAttempts": 1,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0,
+        "SpecEvents": [
+          {
+            "SpecEventType": "Node",
+            "CodeLocation": {
+              "FileName": "/src/tests/suite/specs_test.go",
+              "LineNumber": 11
+            },
+            "TimelineLocation": {
+              "Order": 4,
+              "Time": "2026-10-22T09:18:05.693709266+02:00"
+            },
+            "Message": "fails",
+            "NodeType": "It"
+          },
+          {
+            "SpecEventType": "Node (End)",
+            "CodeLocation": {
+              "FileName": "/src/tests/suite/specs_test.go",
+              "LineNumber": 11
+            },
+            "TimelineLocation": {
+              "Order": 6,
+              "Time": "2026-10-22T09:18:05.693842241+02:00"
+            },
+            "Message": "fails",
+            "Duration": 132971,
+            "NodeType": "It"
+          }
+        ]
+      },
+      {
+        "ContainerHierarchyTexts": [
+          "Widget",
+          "when built"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/src/tests/suite/specs_test.go",
+            "LineNumber": 8
+          },
+          {
+            "FileName": "/src/tests/suite/specs_test.go",
+            "LineNumber": 9
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          [],
+          []
+        ],
+        "ContainerHierarchySemVerConstraints": [
+          [],
+          []
+        ],
+        "ContainerHierarchyComponentSemVerConstraints": [
+          {},
+          {}
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/src/tests/suite/specs_test.go",
+          "LineNumber": 12
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeSemVerConstraints": [],
+        "LeafNodeText": "skips",
+        "State": "skipped",
+        "StartTime": "2026-10-22T09:18:05.693908807+02:00",
+        "EndTime": "2026-10-22T09:18:05.693983116+02:00",
+        "RunTime": 74310,
+        "ParallelProcess": 1,
+        "Failure": {
+          "Message": "not wired yet",
+          "Location": {
+            "FileName": "/src/tests/suite/specs_test.go",
+            "LineNumber": 12,
+            "FullStackTrace": "example.com/m/tests/suite.init.func1.1.3()\n\t/src/tests/suite/specs_test.go:12 +0x25"
+          },
+          "TimelineLocation": {
+            "Order": 8,
+            "Time": "2026-10-22T09:18:05.693979364+02:00"
+          },
+          "FailureNodeContext": "leaf-node",
+          "FailureNodeType": "It",
+          "FailureNodeLocation": {
+            "FileName": "/src/tests/suite/specs_test.go",
+            "LineNumber": 12
+          },
+          "ProgressReport": {
+            "LeafNodeLocation": {},
+            "SpecStartTime": "0001-01-01T00:00:00Z",
+            "CurrentNodeLocation": {},
+            "CurrentNodeStartTime": "0001-01-01T00:00:00Z",
+            "CurrentStepLocation": {},
+            "CurrentStepStartTime": "0001-01-01T00:00:00Z",
+            "TimelineLocation": {
+              "Time": "0001-01-01T00:00:00Z"
+            }
+          }
+        },
+        "NumAttempts": 1,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0,
+        "SpecEvents": [
+          {
+            "SpecEventType": "Node",
+            "CodeLocation": {
+              "FileName": "/src/tests/suite/specs_test.go",
+              "LineNumber": 12
+            },
+            "TimelineLocation": {
+              "Order": 7,
+              "Time": "2026-10-22T09:18:05.693909715+02:00"
+            },
+            "Message": "skips",
+            "NodeType": "It"
+          },
+          {
+            "SpecEventType": "Node (End)",
+            "CodeLocation": {
+              "FileName": "/src/tests/suite/specs_test.go",
+              "LineNumber": 12
+            },
+            "TimelineLocation": {
+              "Order": 9,
+              "Time": "2026-10-22T09:18:05.693982064+02:00"
+            },
+            "Message": "skips",
+            "Duration": 72349,
+            "NodeType": "It"
+          }
+        ]
+      },
+      {
+        "ContainerHierarchyTexts": [
+          "Widget",
+          "when built"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/src/tests/suite/specs_test.go",
+            "LineNumber": 8
+          },
+          {
+            "FileName": "/src/tests/suite/specs_test.go",
+            "LineNumber": 9
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          [],
+          []
+        ],
+        "ContainerHierarchySemVerConstraints": [
+          [],
+          []
+        ],
+        "ContainerHierarchyComponentSemVerConstraints": [
+          {},
+          {}
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/src/tests/suite/specs_test.go",
+          "LineNumber": 13
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeSemVerConstraints": [],
+        "LeafNodeText": "is pending",
+        "State": "pending",
+        "StartTime": "2026-10-22T09:18:05.693990567+02:00",
+        "EndTime": "0001-01-01T00:00:00Z",
+        "RunTime": 0,
+        "ParallelProcess": 1,
+        "NumAttempts": 0,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0
+      }
+    ]
+  }
+]
