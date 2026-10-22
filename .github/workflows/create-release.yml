@@ -1,0 +1,109 @@
+# =============================================================================
+# create-release.yml — Cut a Release Branch
+#
+# Manually triggered. Branches release/{version} off develop, pushes it,
+# and opens a PR into main. Fix PRs land on the release branch; once ready,
+# run the Finalize Release workflow.
+#
+# Auth:
+#   Uses the BlanketOps-Environments GitHub App instead of a personal-account
+#   PAT — see ci.yml's header for the reasoning.
+#
+# Secrets required:
+#   APP_ID, APP_PRIVATE_KEY — GitHub App credentials
+# =============================================================================
+
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g. v0.0.9)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  create:
+    runs-on: self-hosted
+
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: blanketops
+          repositories: environments-bots
+
+      - name: Checkout develop
+        uses: actions/checkout@v7
+        with:
+          ref: develop
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+
+      - name: Create release branch
+        run: |
+          git checkout -b release/${{ github.event.inputs.version }}
+          git push origin release/${{ github.event.inputs.version }}
+
+      # Through the API with curl: the runners have no gh.
+      - name: Open PR to main
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          body="## Release ${VERSION}
+
+          Release branch cut from \`develop\`. Merge fix PRs into this branch before finalizing.
+
+          **Next step:** once all fixes are merged, run the _Finalize Release_ workflow."
+          status=$(jq -n \
+              --arg title "release: ${VERSION}" \
+              --arg head "release/${VERSION}" \
+              --arg body "$body" \
+              '{title: $title, head: $head, base: "main", body: $body}' \
+            | curl -sS -o "${RUNNER_TEMP}/pr.json" -w '%{http_code}' -X POST \
+                -H "Authorization: bearer ${GH_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                --data-binary @- \
+                "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/pulls")
+          if [ "$status" = 201 ]; then
+            echo "Opened $(jq -r '.html_url' "${RUNNER_TEMP}/pr.json")"
+          else
+            echo "::warning::PR creation failed (HTTP ${status}: $(jq -r '.message // empty' "${RUNNER_TEMP}/pr.json")) — branch release/${VERSION} was created successfully. Open the PR manually."
+          fi
+
+      - name: Release Summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY <<EOF
+          # 🚀 Release Branch Created
+
+          **Version:** \`${{ github.event.inputs.version }}\`
+
+          ## Completed
+
+          - Checked out \`develop\`
+          - Created \`release/${{ github.event.inputs.version }}\`
+          - Pushed release branch to origin
+          - Opened (or attempted to open) a PR to \`main\`
+
+          ## Release Flow
+
+          develop → release/${{ github.event.inputs.version }} → main
+
+          ## Next Steps
+
+          1. Merge any release fixes into the release branch.
+          2. Validate the release candidate.
+          3. Run the **Finalize Release** workflow.
+          EOF
