@@ -1,0 +1,342 @@
+# =============================================================================
+# security.yml — Security & Supply-Chain Scanning
+#
+# The same three jobs as environments' security.yml, each gated to its own
+# schedule:
+#
+#   codeql       — CodeQL static analysis (Go).
+#   scorecard    — OpenSSF Scorecard supply-chain posture check.
+#   govulncheck  — reachable-vulnerability scan of the module's dependencies.
+#
+# All three are report-only: none fail the build. Findings render into each
+# job's summary and are uploaded as build artifacts. SARIF upload to the
+# Security tab is best effort.
+#
+# None of these jobs needs a secret, so they also run on Dependabot PRs.
+# environments' vendor snapshot is left out (see ci.yml): govulncheck reads
+# the module graph directly.
+#
+# scorecard's repo_token is GITHUB_TOKEN, not a GitHub App token: some checks
+# (e.g. Branch-Protection) are less complete this way, but Scorecard is
+# report-only here, not a merge gate.
+# =============================================================================
+
+name: Security
+
+# No push or pull_request triggers, as in environments: these jobs are
+# CPU-heavy and every repo's runner shares one machine, so running them on
+# every push starves the required CI checks. They run on their weekly
+# schedules and on manual dispatch. GitHub-hosted runners are not an option
+# while the account is billing-locked. Add the two triggers once there is
+# capacity for them.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 7 * * 3' # CodeQL — Wednesday 07:00 UTC
+    - cron: '0 6 * * 0' # Scorecard — Sunday 06:00 UTC
+    - cron: '0 8 * * 1' # govulncheck — Monday 08:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Job 1: CodeQL
+  # ───────────────────────────────────────────────────────────────────────────
+  codeql:
+    name: CodeQL (Go)
+    runs-on: self-hosted
+    if: >
+      github.event_name == 'push' || github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch' ||
+      github.event.schedule == '0 7 * * 3'
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          # The self-hosted runners keep Go's module and build caches on a
+          # persistent volume. setup-go's own cache would upload and download
+          # the same data through GitHub's cache service on every job.
+          cache: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: go
+          build-mode: manual
+
+      - name: Build
+        run: go build ./...
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          output: sarif-results
+          upload: false
+          category: "/language:go"
+
+      - name: Upload to code-scanning (best effort)
+        uses: github/codeql-action/upload-sarif@v4
+        continue-on-error: true
+        with:
+          sarif_file: sarif-results/go.sarif
+
+      - name: Upload SARIF artifact
+        uses: actions/upload-artifact@v7
+        if: always()
+        # Report-only: an artifact-storage problem must not turn a clean scan red.
+        continue-on-error: true
+        with:
+          name: codeql-results-${{ github.sha }}
+          path: sarif-results/go.sarif
+          retention-days: 30
+
+      - name: Summary
+        if: always()
+        run: |
+          ROWS=$(jq -r '
+            .runs[0].results[]
+            | [
+                (.level // "warning"),
+                .ruleId,
+                ((.locations[0].physicalLocation.artifactLocation.uri // "?") + ":" + ((.locations[0].physicalLocation.region.startLine // 0) | tostring)),
+                (.message.text | gsub("\n";" ") | if length > 90 then .[0:87] + "..." else . end)
+              ] | @tsv
+          ' sarif-results/go.sarif 2>/dev/null)
+
+          COUNT=$(echo "${ROWS}" | grep -c . || true)
+
+          if [ -n "${ROWS}" ]; then
+            TABLE="| Severity | Rule | Location | Message |
+          | --- | --- | --- | --- |
+          $(echo "${ROWS}" | awk -F'\t' '{printf "| %s | %s | `%s` | %s |\n", $1, $2, $3, $4}')"
+          else
+            TABLE="No findings."
+            COUNT=0
+          fi
+
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          # 🔎 CodeQL Analysis (Go)
+
+          **Findings:** ${COUNT}
+
+          ${TABLE}
+
+          > Full SARIF uploaded as a build artifact (\`codeql-results-${{ github.sha }}\`). Security-tab upload is best-effort, so that step may show as failed without affecting this run's outcome.
+          EOF
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Job 2: Scorecard
+  #
+  # publish_results is false and there is no SARIF upload: results are
+  #   JSON, rendered into the summary + artifact. Both were private-repo
+  #   limits; the repo is public now, so either can be turned on.
+  # ───────────────────────────────────────────────────────────────────────────
+  scorecard:
+    name: OpenSSF Scorecard
+    runs-on: self-hosted
+    if: >
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch' ||
+      github.event.schedule == '0 6 * * 0'
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Runs the scorecard CLI baked into the self-hosted runner image.
+      # ossf/scorecard-action is a Docker container action, and the runner
+      # pods have no Docker daemon, so the action cannot start there. The CLI
+      # scores the repository's default branch through the GitHub API; its
+      # JSON has the same shape the Summary step below reads.
+      # The token is GITHUB_TOKEN rather than a GitHub App token so this
+      # job still runs on Dependabot PRs, which get no repo secrets — some
+      # checks (e.g. Branch-Protection) are less complete this way, but
+      # Scorecard is report-only here, not a merge gate.
+      - name: Run Scorecard analysis
+        env:
+          GITHUB_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # The CLI writes its JSON and then exits 1 if any single check errored.
+        # Branch-Protection always does with GITHUB_TOKEN, which cannot read
+        # classic branch protection rules. That check is reported as an error
+        # (score -1) in the results; only a run with no results at all fails.
+        run: |
+          set +e
+          scorecard --repo="github.com/${{ github.repository }}" --format=json > results.json
+          status=$?
+          set -e
+          if ! jq -e '.checks | length > 0' results.json >/dev/null 2>&1; then
+            echo "::error::Scorecard produced no results (exit code ${status})."
+            exit 1
+          fi
+          if [ "${status}" -ne 0 ]; then
+            echo "::warning::Some Scorecard checks could not run and are reported as errors — Branch-Protection cannot be read with GITHUB_TOKEN."
+          fi
+
+      - name: Upload results artifact
+        uses: actions/upload-artifact@v7
+        if: always()
+        # Report-only: an artifact-storage problem must not turn a clean scan red.
+        continue-on-error: true
+        with:
+          name: scorecard-results-${{ github.sha }}
+          path: results.json
+          retention-days: 30
+
+      - name: Summary
+        if: always()
+        run: |
+          OVERALL=$(jq -r '.score // "N/A"' results.json 2>/dev/null)
+
+          ROWS=$(jq -r '
+            .checks[]
+            | [ .name, (if .score == -1 then "N/A" else "\(.score)/10" end), (.reason // "") ]
+            | @tsv
+          ' results.json 2>/dev/null)
+
+          if [ -n "${ROWS}" ]; then
+            TABLE="| Check | Score | Reason |
+          | --- | --- | --- |
+          $(echo "${ROWS}" | awk -F'\t' '{printf "| %s | %s | %s |\n", $1, $2, $3}')"
+          else
+            TABLE="No results parsed — see the raw artifact."
+          fi
+
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          # 🛡️ OpenSSF Scorecard
+
+          **Overall score:** \`${OVERALL}/10\`
+          **Tool:** [ossf/scorecard](https://github.com/ossf/scorecard) CLI \`$(scorecard version 2>/dev/null | awk '/GitVersion/ {print $2}')\`
+
+          > Results are not published to the public Scorecard API/badge (publish_results is false).
+
+          ## Checks
+
+          ${TABLE}
+
+          > Full JSON results uploaded as a build artifact (\`scorecard-results-${{ github.sha }}\`).
+          EOF
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Job 3: govulncheck (from security-scan.yml)
+  # Original scope: push to main, pull_request (any), Mon 08:00 UTC.
+  # ───────────────────────────────────────────────────────────────────────────
+  govulncheck:
+    name: govulncheck
+    runs-on: self-hosted
+    if: >
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch' ||
+      github.event.schedule == '0 8 * * 1'
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Run govulncheck
+        id: govulncheck
+        run: |
+          govulncheck ./... 2>&1 | tee govulncheck.txt
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+        continue-on-error: true
+
+      - name: Run govulncheck (SARIF)
+        run: |
+          govulncheck -format sarif ./... > govulncheck.sarif 2>/dev/null || true
+
+      - name: Run govulncheck (JSON)
+        run: |
+          govulncheck -format json ./... > govulncheck.json 2>/dev/null || true
+
+      - name: Upload scan artifacts
+        uses: actions/upload-artifact@v7
+        if: always()
+        # Report-only: an artifact-storage problem must not turn a clean scan red.
+        continue-on-error: true
+        with:
+          name: govulncheck-${{ github.sha }}
+          path: |
+            govulncheck.txt
+            govulncheck.sarif
+            govulncheck.json
+          retention-days: 30
+
+      - name: Summary
+        if: always()
+        run: |
+          STATUS="${{ steps.govulncheck.outputs.exit_code == '0' && '✅ No vulnerabilities found' || '⚠️ Vulnerabilities detected' }}"
+
+          # govulncheck streams an `osv` record for every DB match against a
+          # required/imported module, but only `finding` records are ones it
+          # determined are actually reachable — join on those, not raw osv.
+          ROWS=$(jq -s -r '
+            ( [ .[] | select(.finding) | .finding ] ) as $findings
+            | ( $findings | map(.osv) | unique ) as $ids
+            | ( [ .[] | select(.osv) | .osv ] | map({key: .id, value: .}) | from_entries ) as $osvs
+            | $ids[]
+            | . as $id
+            | ($osvs[$id]) as $o
+            | ( [$findings[] | select(.osv == $id) | .fixed_version] | map(select(. != null)) | unique ) as $fixed
+            | [
+                $id,
+                (( $o.affected // [] ) | map(.package.name) | unique | join(", ")),
+                ( if ($fixed|length) > 0 then ($fixed | join(", ")) else "unfixed" end ),
+                (( $o.summary // $o.details // "" ) | gsub("\n";" ") | if length > 90 then .[0:87] + "..." else . end )
+              ] | @tsv
+          ' govulncheck.json 2>/dev/null)
+
+          if [ -n "${ROWS}" ]; then
+            TABLE="| Vulnerability | Module(s) | Fixed in | Summary |
+          | --- | --- | --- | --- |
+          $(echo "${ROWS}" | awk -F'\t' '{printf "| [%s](https://pkg.go.dev/vuln/%s) | %s | %s | %s |\n", $1, $1, $2, $3, $4}')"
+          else
+            TABLE="No known vulnerabilities found."
+          fi
+
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          # 🔍 Vulnerability Scan
+
+          **Status:** ${STATUS}
+          **Go Version:** \`$(go version | awk '{print $3}')\`
+          **Tool:** \`govulncheck ./...\`
+
+          ## Findings
+
+          ${TABLE}
+
+          <details>
+          <summary>Full govulncheck output</summary>
+
+          \`\`\`
+          $(cat govulncheck.txt 2>/dev/null || echo "No output captured")
+          \`\`\`
+
+          </details>
+
+          > SARIF results uploaded to the [Security tab](${{ github.server_url }}/${{ github.repository }}/security/code-scanning).
+          EOF
