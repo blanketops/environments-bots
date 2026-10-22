@@ -76,6 +76,8 @@ func duration(d time.Duration) string {
 	switch {
 	case d <= 0:
 		return "-"
+	case d < time.Millisecond:
+		return "<1ms"
 	case d < time.Second:
 		return fmt.Sprintf("%dms", d.Milliseconds())
 	default:

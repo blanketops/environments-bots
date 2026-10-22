@@ -198,9 +198,10 @@ func parseFile(fset *token.FileSet, p, rel, testsDir string) (File, error) {
 	return f, nil
 }
 
-// isTestFunc reports whether d is a Go test function: no receiver, a name
-// that is "Test" or "Test" followed by a non-lowercase rune (as go test
-// requires), and exactly one parameter.
+// isTestFunc reports whether d is a Go test function as go test sees it: no
+// receiver, a name that is "Test" or "Test" followed by a non-lowercase rune,
+// and one parameter of type *testing.T (or *T under a dot import).
+// TestMain(m *testing.M) is the package's setup hook, not a test.
 func isTestFunc(d *ast.FuncDecl) bool {
 	if d.Recv != nil || !strings.HasPrefix(d.Name.Name, "Test") {
 		return false
@@ -212,7 +213,20 @@ func isTestFunc(d *ast.FuncDecl) bool {
 		}
 	}
 	params := d.Type.Params.List
-	return len(params) == 1 && len(params[0].Names) <= 1
+	if len(params) != 1 || len(params[0].Names) > 1 {
+		return false
+	}
+	star, ok := params[0].Type.(*ast.StarExpr)
+	if !ok {
+		return false
+	}
+	switch t := star.X.(type) {
+	case *ast.SelectorExpr:
+		return t.Sel.Name == "T"
+	case *ast.Ident:
+		return t.Name == "T"
+	}
+	return false
 }
 
 // ginkgoNode reports whether e is a call to a Ginkgo container or spec

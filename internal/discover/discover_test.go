@@ -68,6 +68,11 @@ import "testing"
 func TestBuildService_CreateBuild(t *testing.T) {}
 func TestA(t *testing.T) {}
 func Test(t *testing.T) {}
+func TestMain(m *testing.M) {}
+func TestDot(t *T) {}
+func TestValue(t testing.T) {}
+func TestOther(t *testing.B) {}
+func TestFunc(t func()) {}
 func Testlowercase(t *testing.T) {}
 func TestTwoParams(t *testing.T, x int) {}
 func TestNoParams() {}
@@ -103,7 +108,7 @@ func TestDiscover(t *testing.T) {
 			Dir:   "tests/grpc",
 			Key:   "grpc/build_grpc_test",
 			Layer: "grpc",
-			Tests: []string{"TestBuildService_CreateBuild", "TestA", "Test"},
+			Tests: []string{"TestBuildService_CreateBuild", "TestA", "Test", "TestDot"},
 		},
 		{
 			Path:  "tests/top_test.go",

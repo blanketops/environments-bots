@@ -284,7 +284,7 @@ func TestSummaries(t *testing.T) {
 }
 
 func TestDuration(t *testing.T) {
-	for d, want := range map[time.Duration]string{0: "-", 5 * time.Millisecond: "5ms", 2500 * time.Millisecond: "2.5s"} {
+	for d, want := range map[time.Duration]string{0: "-", 300 * time.Microsecond: "<1ms", 5 * time.Millisecond: "5ms", 2500 * time.Millisecond: "2.5s"} {
 		if got := duration(d); got != want {
 			t.Errorf("duration(%v) = %q, want %q", d, got, want)
 		}
