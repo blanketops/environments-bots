@@ -11,6 +11,8 @@
 #
 # Secrets required:
 #   APP_ID, APP_PRIVATE_KEY — GitHub App credentials
+#   RELEASER_APP_ID, RELEASER_APP_PRIVATE_KEY — the BlanketOps Environments
+#   Releaser App, which runs cmd/releaser on the Release issue
 # =============================================================================
 
 name: Create Release
@@ -45,6 +47,35 @@ jobs:
           ref: develop
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
+
+      # The releaser (cmd/releaser) checks the version against the latest
+      # tag and the commits since it, opens or reuses the Release issue and
+      # puts it on the board as Release. A failed check stops here, before
+      # any branch is cut. It runs as the Releaser App.
+      - name: Generate Releaser App token
+        id: releaser-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.RELEASER_APP_ID }}
+          private-key: ${{ secrets.RELEASER_APP_PRIVATE_KEY }}
+          owner: blanketops
+          repositories: environments-bots
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Build releaser
+        run: go build -o "${RUNNER_TEMP}/releaser" ./cmd/releaser
+
+      - name: Releaser prepare
+        env:
+          GH_TOKEN: ${{ steps.releaser-token.outputs.token }}
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          "${RUNNER_TEMP}/releaser" prepare -release "${VERSION}" -ref develop -project blanketops/1
 
       - name: Configure git
         run: |

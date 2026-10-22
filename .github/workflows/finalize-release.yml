@@ -48,6 +48,8 @@
 #
 # Secrets required:
 #   APP_ID, APP_PRIVATE_KEY — GitHub App credentials
+#   RELEASER_APP_ID, RELEASER_APP_PRIVATE_KEY — the BlanketOps Environments
+#   Releaser App, which runs cmd/releaser on the Release issue
 # =============================================================================
 
 name: Finalize Release
@@ -96,18 +98,42 @@ jobs:
             chmod +x "${RUNNER_TEMP}/${script}"
           done
 
-      - name: Merge release into main
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: |
-          "${RUNNER_TEMP}/api-merge-pr.sh" main "release/${VERSION}" \
-            "release: merge release/${VERSION} into main"
+      # The releaser (cmd/releaser), as the Releaser App, checks before
+      # anything is merged: one open Release issue, nothing still open into
+      # release/<version> or in the version's milestone, no tag yet. It is
+      # built from the release branch being finalized.
+      - name: Generate Releaser App token
+        id: releaser-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.RELEASER_APP_ID }}
+          private-key: ${{ secrets.RELEASER_APP_PRIVATE_KEY }}
+          owner: blanketops
+          repositories: environments-bots
 
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: false
+
+      - name: Build releaser
+        run: |
+          git checkout --quiet --detach "origin/release/${VERSION}"
+          go build -o "${RUNNER_TEMP}/releaser" ./cmd/releaser
+          git checkout --quiet -
+
+      - name: Releaser verify
+        env:
+          GH_TOKEN: ${{ steps.releaser-token.outputs.token }}
+        run: '"${RUNNER_TEMP}/releaser" verify -release "${VERSION}"'
+
+      - name: Merge release into main
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          "${RUNNER_TEMP}/api-merge-pr.sh" main "release/${VERSION}" \
+            "release: merge release/${VERSION} into main"
 
       - name: Install gomarkdoc
         run: go install github.com/princjef/gomarkdoc/cmd/gomarkdoc@latest
