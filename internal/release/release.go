@@ -800,7 +800,21 @@ func Verify(ctx context.Context, api API, opts Options) (*Result, error) {
 		return nil, fmt.Errorf("release pull request: %w", err)
 	}
 	if len(rp) == 0 {
-		r.warn("no open pull request from %s into %s; finalize opens one", branch, MainBranch)
+		merged, err := api.ListPulls(ctx, "closed", MainBranch, branch)
+		if err != nil {
+			return nil, fmt.Errorf("release pull request: %w", err)
+		}
+		for i := range merged {
+			if merged[i].MergedAt != nil {
+				r.ReleasePR = &merged[i]
+				break
+			}
+		}
+		if r.ReleasePR != nil {
+			r.warn("the release pull request #%d is already merged into %s; finalize continues from %s", r.ReleasePR.Number, MainBranch, MainBranch)
+		} else {
+			r.warn("no open pull request from %s into %s; finalize opens one", branch, MainBranch)
+		}
 	} else {
 		r.ReleasePR = &rp[0]
 	}
