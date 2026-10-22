@@ -1,0 +1,155 @@
+# =============================================================================
+# release.yml — Build, Sign and Publish a Release
+#
+# Fires on push of a v* tag (finalize-release.yml creates it). Builds every
+# tool under cmd/ for linux/amd64 and linux/arm64, signs each binary with
+# Cosign (keyless, through the workflow's OIDC identity), attests its build
+# provenance, and publishes a GitHub Release with the binaries, their
+# Sigstore bundles and a checksum file. Release notes come from the
+# already-current CHANGELOG.md, as in environments' release.yml.
+#
+# CHANGELOG.md itself is generated and committed by finalize-release.yml
+# before it tags; this workflow only reads it.
+#
+# cosign and git-cliff are baked into the runner image
+# (zenith-runner-toolchain).
+#
+# Secrets required:
+#   APP_ID, APP_PRIVATE_KEY — GitHub App credentials, exchanged for a
+#   short-lived installation token, used to check out main and publish the
+#   release.
+# =============================================================================
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write     # Cosign keyless signing (Sigstore OIDC)
+  attestations: write # actions/attest-build-provenance
+
+jobs:
+  release:
+    runs-on: self-hosted
+    env:
+      VERSION: ${{ github.ref_name }}
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: blanketops
+          repositories: environments-bots
+
+      - name: Checkout tag
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Tool versions
+        run: |
+          go version
+          cosign version | grep GitVersion
+          git-cliff --version
+
+      # Static binaries (CGO off), reproducible paths (-trimpath), the tag
+      # stamped into main.version. One pair per directory under cmd/.
+      - name: Build binaries
+        run: |
+          mkdir -p dist
+          for dir in cmd/*/; do
+            tool=$(basename "$dir")
+            for arch in amd64 arm64; do
+              CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath \
+                -ldflags "-s -w -X main.version=${VERSION}" \
+                -o "dist/${tool}-linux-${arch}" "./${dir}"
+            done
+          done
+          ls -l dist
+
+      - name: Verify binaries
+        run: |
+          for bin in dist/*-linux-amd64; do
+            got=$("$bin" version)
+            if [ "$got" != "$VERSION" ]; then
+              echo "::error::$bin reports version '$got', want '$VERSION'"
+              exit 1
+            fi
+            echo "$bin: $got"
+          done
+
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum -- *-linux-* > SHA256SUMS && cat SHA256SUMS
+
+      # One Sigstore bundle per binary (signature, certificate and
+      # transparency-log entry), verifiable offline with cosign verify-blob.
+      - name: Sign binaries
+        run: |
+          for bin in dist/*-linux-* dist/SHA256SUMS; do
+            cosign sign-blob --yes --bundle "${bin}.sigstore.json" "$bin"
+          done
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            dist/*-linux-amd64
+            dist/*-linux-arm64
+
+      # finalize-release.yml already generated and committed CHANGELOG.md
+      # to main before tagging; this just gets onto that tip.
+      - name: Checkout main
+        run: |
+          git checkout main
+          git pull origin main
+
+      - name: Generate release notes
+        run: git-cliff --config .cliff.toml --latest --output RELEASE_NOTES.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          body_path: RELEASE_NOTES.md
+          files: |
+            dist/*-linux-amd64
+            dist/*-linux-arm64
+            dist/SHA256SUMS
+            dist/*.sigstore.json
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: Release Summary
+        run: |
+          {
+            echo "# 📦 Release Published: ${VERSION}"
+            echo ""
+            echo "| Asset | Size |"
+            echo "| --- | --- |"
+            for f in dist/*-linux-amd64 dist/*-linux-arm64; do
+              echo "| \`$(basename "$f")\` | $(du -h "$f" | cut -f1) |"
+            done
+            echo ""
+            echo "## Verification"
+            echo ""
+            echo "\`\`\`"
+            echo "cosign verify-blob --bundle test-helper-linux-amd64.sigstore.json \\"
+            echo "  --certificate-identity https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/${VERSION} \\"
+            echo "  --certificate-oidc-issuer https://token.actions.githubusercontent.com \\"
+            echo "  test-helper-linux-amd64"
+            echo "gh attestation verify test-helper-linux-amd64 --repo ${GITHUB_REPOSITORY}"
+            echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"
