@@ -109,6 +109,31 @@ branches and their pull requests; merging and tagging stay with Finalize
 Release. Commit subjects and issue and milestone titles are written inside
 code spans.
 
+### Using it from another repository
+
+Every BlanketOps repository runs the releaser through the composite action
+`blanketops/environments-bots/.github/actions/releaser@vX.Y.Z`. It mints a
+Releaser App token for the calling repository, downloads the `releaser`
+binary of that same environments-bots release, verifies its Sigstore bundle
+against `release.yml@refs/tags/vX.Y.Z` of this repository with cosign (a
+binary that does not verify is never run), and runs one command:
+
+```yaml
+- uses: blanketops/environments-bots/.github/actions/releaser@vX.Y.Z
+  with:
+    command: cut                       # plan | cut | prepare | verify | complete
+    release: ${{ inputs.version }}     # optional for plan and cut
+    app-id: ${{ secrets.RELEASER_APP_ID }}
+    private-key: ${{ secrets.RELEASER_APP_PRIVATE_KEY }}
+```
+
+`ref` (default `develop`), `project` (default `blanketops/1`) and
+`releaser-version` (default: the tag the action is used at) are optional.
+Each repository needs the two secrets and cosign on its runners (the
+zenith-runner-toolchain image has it). This repository's own workflows build
+the releaser from source instead, so a change is exercised before it is
+released.
+
 ## Security
 
 The tools act on GitHub through an App installation token passed in by the
