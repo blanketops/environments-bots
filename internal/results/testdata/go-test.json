@@ -1,0 +1,29 @@
+{"ImportPath":"example.com/m/broken [example.com/m/broken.test]","Action":"build-output","Output":"# example.com/m/broken [example.com/m/broken.test]\n"}
+{"ImportPath":"example.com/m/broken [example.com/m/broken.test]","Action":"build-output","Output":"broken/b_test.go:5:28: undefined: undefinedThing\n"}
+{"ImportPath":"example.com/m/broken [example.com/m/broken.test]","Action":"build-fail"}
+{"Time":"2026-10-22T09:17:41.93519032+02:00","Action":"start","Package":"example.com/m/broken"}
+{"Time":"2026-10-22T09:17:41.935245743+02:00","Action":"output","Package":"example.com/m/broken","Output":"FAIL\texample.com/m/broken [build failed]\n","OutputType":"frame"}
+{"Time":"2026-10-22T09:17:41.935253125+02:00","Action":"fail","Package":"example.com/m/broken","Elapsed":0,"FailedBuild":"example.com/m/broken [example.com/m/broken.test]"}
+{"Time":"2026-10-22T09:17:42.0329327+02:00","Action":"start","Package":"example.com/m/ok"}
+{"Time":"2026-10-22T09:17:42.034673754+02:00","Action":"run","Package":"example.com/m/ok","Test":"TestPass"}
+{"Time":"2026-10-22T09:17:42.034960953+02:00","Action":"output","Package":"example.com/m/ok","Test":"TestPass","Output":"=== RUN   TestPass\n","OutputType":"frame"}
+{"Time":"2026-10-22T09:17:42.034970164+02:00","Action":"run","Package":"example.com/m/ok","Test":"TestPass/sub"}
+{"Time":"2026-10-22T09:17:42.03497285+02:00","Action":"output","Package":"example.com/m/ok","Test":"TestPass/sub","Output":"=== RUN   TestPass/sub\n","OutputType":"frame"}
+{"Time":"2026-10-22T09:17:42.034976515+02:00","Action":"output","Package":"example.com/m/ok","Test":"TestPass/sub","Output":"--- PASS: TestPass/sub (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-22T09:17:42.034979416+02:00","Action":"pass","Package":"example.com/m/ok","Test":"TestPass/sub","Elapsed":0}
+{"Time":"2026-10-22T09:17:42.034982693+02:00","Action":"output","Package":"example.com/m/ok","Test":"TestPass","Output":"--- PASS: TestPass (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-22T09:17:42.034984455+02:00","Action":"pass","Package":"example.com/m/ok","Test":"TestPass","Elapsed":0}
+{"Time":"2026-10-22T09:17:42.034985989+02:00","Action":"run","Package":"example.com/m/ok","Test":"TestFail"}
+{"Time":"2026-10-22T09:17:42.034987319+02:00","Action":"output","Package":"example.com/m/ok","Test":"TestFail","Output":"=== RUN   TestFail\n","OutputType":"frame"}
+{"Time":"2026-10-22T09:17:42.034989025+02:00","Action":"output","Package":"example.com/m/ok","Test":"TestFail","Output":"    a_test.go:6: context line\n"}
+{"Time":"2026-10-22T09:17:42.034990793+02:00","Action":"output","Package":"example.com/m/ok","Test":"TestFail","Output":"    a_test.go:6: boom\n","OutputType":"error"}
+{"Time":"2026-10-22T09:17:42.0349929+02:00","Action":"output","Package":"example.com/m/ok","Test":"TestFail","Output":"--- FAIL: TestFail (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-22T09:17:42.034994596+02:00","Action":"fail","Package":"example.com/m/ok","Test":"TestFail","Elapsed":0}
+{"Time":"2026-10-22T09:17:42.034996123+02:00","Action":"run","Package":"example.com/m/ok","Test":"TestSkip"}
+{"Time":"2026-10-22T09:17:42.034997484+02:00","Action":"output","Package":"example.com/m/ok","Test":"TestSkip","Output":"=== RUN   TestSkip\n","OutputType":"frame"}
+{"Time":"2026-10-22T09:17:42.034999162+02:00","Action":"output","Package":"example.com/m/ok","Test":"TestSkip","Output":"    a_test.go:7: not yet\n"}
+{"Time":"2026-10-22T09:17:42.035001046+02:00","Action":"output","Package":"example.com/m/ok","Test":"TestSkip","Output":"--- SKIP: TestSkip (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-22T09:17:42.035002677+02:00","Action":"skip","Package":"example.com/m/ok","Test":"TestSkip","Elapsed":0}
+{"Time":"2026-10-22T09:17:42.035004184+02:00","Action":"output","Package":"example.com/m/ok","Output":"FAIL\n","OutputType":"frame"}
+{"Time":"2026-10-22T09:17:42.035026998+02:00","Action":"output","Package":"example.com/m/ok","Output":"FAIL\texample.com/m/ok\t0.002s\n","OutputType":"frame"}
+{"Time":"2026-10-22T09:17:42.035033124+02:00","Action":"fail","Package":"example.com/m/ok","Elapsed":0.002}
