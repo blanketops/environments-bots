@@ -46,6 +46,11 @@ const (
 	StatusDone    = "Done"
 )
 
+// DefaultBot is the login the Releaser App's installation token acts as.
+// Release issues it opened are its own to plan, rename and flag; issues a
+// person opened are only reused, never renamed or flagged.
+const DefaultBot = "blanketops-environments-releaser[bot]"
+
 // MainBranch is where releases are merged; release branches are
 // release/<version>.
 const MainBranch = "main"
@@ -99,6 +104,15 @@ type Options struct {
 	RunURL string
 	// DryRun only reads: nothing is created, commented or closed.
 	DryRun bool
+	// Bot is the releaser's own login (default DefaultBot).
+	Bot string
+}
+
+func (o Options) bot() string {
+	if o.Bot != "" {
+		return o.Bot
+	}
+	return DefaultBot
 }
 
 // Check is one named check and its outcome.
@@ -377,9 +391,10 @@ func prepare(ctx context.Context, api API, opts Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	r.staleIssues(issues, prev)
-	// Releases go out in version order: a lower planned release comes first.
-	for _, is := range planned(issues, prev) {
+	r.staleIssues(issues, prev, opts.bot())
+	// Releases go out in version order: a lower release the releaser
+	// planned comes first.
+	for _, is := range planned(issues, prev, opts.bot()) {
 		if v := issueVersion(is); v.Compare(r.Version) < 0 {
 			versionOK = false
 			r.check("Release order", false, "#%d plans %s, which comes first: release it, or close it, before %s", is.Number, v, r.Version)
@@ -458,9 +473,10 @@ func next(prev *semver.Version, commits []semver.Commit) semver.Version {
 	return prev.Next(semver.Required(*prev, commits))
 }
 
-// planned returns the open Release issues of versions above prev (every
-// version when prev is nil), lowest version first.
-func planned(issues map[string][]github.Issue, prev *semver.Version) []github.Issue {
+// planned returns the open Release issues the releaser (bot) opened for
+// versions above prev (every version when prev is nil), lowest version
+// first.
+func planned(issues map[string][]github.Issue, prev *semver.Version, bot string) []github.Issue {
 	type entry struct {
 		v  semver.Version
 		is github.Issue
@@ -472,7 +488,7 @@ func planned(issues map[string][]github.Issue, prev *semver.Version) []github.Is
 			continue
 		}
 		for _, is := range list {
-			if is.State == "open" {
+			if is.State == "open" && is.User.Login == bot {
 				es = append(es, entry{v, is})
 			}
 		}
@@ -531,9 +547,18 @@ func Plan(ctx context.Context, api API, opts Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	r.staleIssues(issues, r.Previous)
-	open := planned(issues, r.Previous)
+	r.staleIssues(issues, r.Previous, opts.bot())
+	open := planned(issues, r.Previous, opts.bot())
 	if len(open) == 0 {
+		// A person may already plan this version (an issue the releaser
+		// did not open): it is adopted as it is, never duplicated.
+		for _, is := range issues[need.String()] {
+			if is.State == "open" {
+				r.Issue, r.Version = is, need
+				r.Note = fmt.Sprintf("#%d plans %s, which covers the %d commit(s) since %s", is.Number, need, len(commits), prevName(r.Previous))
+				return r, nil
+			}
+		}
 		return r, r.openPlanned(ctx, api, opts, need)
 	}
 	r.Issue, r.Version = open[0], issueVersion(open[0])
@@ -603,7 +628,7 @@ func Cut(ctx context.Context, api API, opts Options) (*Result, error) {
 		return nil, fmt.Errorf("no ref to release from")
 	}
 	if opts.Version == "" {
-		v, err := resolve(ctx, api, opts.Ref)
+		v, err := resolve(ctx, api, opts.Ref, opts.bot())
 		if err != nil {
 			return nil, err
 		}
@@ -660,7 +685,7 @@ func Cut(ctx context.Context, api API, opts Options) (*Result, error) {
 
 // resolve picks the version Cut releases when none is given: the planned
 // Release issue's, else the version the commits need.
-func resolve(ctx context.Context, api API, ref string) (semver.Version, error) {
+func resolve(ctx context.Context, api API, ref, bot string) (semver.Version, error) {
 	tags, err := api.ListTags(ctx)
 	if err != nil {
 		return semver.Version{}, fmt.Errorf("list tags: %w", err)
@@ -673,7 +698,7 @@ func resolve(ctx context.Context, api API, ref string) (semver.Version, error) {
 	if err != nil {
 		return semver.Version{}, err
 	}
-	if open := planned(issues, prev); len(open) > 0 {
+	if open := planned(issues, prev, bot); len(open) > 0 {
 		return issueVersion(open[0]), nil
 	}
 	var scratch Result
@@ -684,9 +709,10 @@ func resolve(ctx context.Context, api API, ref string) (semver.Version, error) {
 	return next(prev, commits), nil
 }
 
-// staleIssues warns about open Release issues no release will close: their
-// version is already released or below the latest release.
-func (r *Result) staleIssues(issues map[string][]github.Issue, prev *semver.Version) {
+// staleIssues warns about open Release issues the releaser (bot) opened
+// that no release will close: their version is already released or below
+// the latest release. Issues a person opened are theirs to keep.
+func (r *Result) staleIssues(issues map[string][]github.Issue, prev *semver.Version, bot string) {
 	var keys []string
 	for k := range issues {
 		keys = append(keys, k)
@@ -699,7 +725,7 @@ func (r *Result) staleIssues(issues map[string][]github.Issue, prev *semver.Vers
 		v, err := semver.Parse(k)
 		for _, is := range issues[k] {
 			switch {
-			case is.State != "open":
+			case is.State != "open" || is.User.Login != bot:
 			case err != nil:
 				r.warn("#%d is open but its title %s names no release version", is.Number, code(is.Title))
 			case prev != nil && v.Compare(*prev) <= 0:

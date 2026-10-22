@@ -45,10 +45,11 @@ func setup(t *testing.T) (*github.Client, *githubtest.Server) {
 // v0.8.8 and v0.8.9, and two for v0.0.3.
 func environments(srv *githubtest.Server) (v088, v089, dup1, dup2 int) {
 	srv.Tags = []githubtest.Tag{{Name: "v0.8.7", SHA: "sha087"}, {Name: "v0.8.6", SHA: "sha086"}, {Name: "nightly", SHA: "x"}}
-	v088 = srv.AddIssue(githubtest.Issue{Title: "Release: v0.8.8", Labels: []string{Label}})
-	v089 = srv.AddIssue(githubtest.Issue{Title: "Release: v0.8.9", Labels: []string{Label}})
-	dup1 = srv.AddIssue(githubtest.Issue{Title: "Release: v0.0.3", Labels: []string{Label}})
-	dup2 = srv.AddIssue(githubtest.Issue{Title: "Release: v0.0.3", Labels: []string{Label}})
+	// Opened by people, as on the board (go-live planning).
+	v088 = srv.AddIssue(githubtest.Issue{Title: "Release: v0.8.8", Labels: []string{Label}, Author: "ntlaletsi70"})
+	v089 = srv.AddIssue(githubtest.Issue{Title: "Release: v0.8.9", Labels: []string{Label}, Author: "ntlaletsi70"})
+	dup1 = srv.AddIssue(githubtest.Issue{Title: "Release: v0.0.3", Labels: []string{Label}, Author: "ntlaletsi70"})
+	dup2 = srv.AddIssue(githubtest.Issue{Title: "Release: v0.0.3", Labels: []string{Label}, Author: "ntlaletsi70"})
 	srv.AddIssue(githubtest.Issue{Title: "Release: v0.8.7", Labels: []string{Label}, State: "closed"})
 	srv.AddIssue(githubtest.Issue{Title: "Release: v0.8.8", PR: true}) // a pull request, not an issue
 	srv.AddIssue(githubtest.Issue{Title: "Release: next", Labels: []string{Label}})
@@ -98,13 +99,24 @@ func TestPrepareReusesIssueAndWarnsAboutStaleOnes(t *testing.T) {
 		t.Errorf("commits %d, required %v; want 3 (merge dropped) and patch (feat is patch before 1.0)", len(r.Commits), r.Required)
 	}
 	warn := strings.Join(r.Warnings, "\n")
-	for _, want := range []string{fmt.Sprintf("#%d (v0.0.3)", dup1), fmt.Sprintf("#%d (v0.0.3)", dup2), "ddddddd", "names no release version"} {
+	if len(r.Warnings) != 1 || !strings.Contains(warn, "ddddddd") {
+		t.Errorf("people's Release issues must not be flagged; warnings:\n%s", warn)
+	}
+	// The releaser's own stale issues are.
+	issue(srv, dup1).Author = DefaultBot
+	srv.Issue("Release: next").Author = DefaultBot
+	r, err = Prepare(context.Background(), c, Options{Version: "v0.8.8", Ref: "develop", DryRun: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	warn = strings.Join(r.Warnings, "\n")
+	for _, want := range []string{fmt.Sprintf("#%d (v0.0.3)", dup1), "names no release version"} {
 		if !strings.Contains(warn, want) {
 			t.Errorf("warnings lack %q:\n%s", want, warn)
 		}
 	}
-	if strings.Contains(warn, "v0.8.9") {
-		t.Errorf("v0.8.9 is planned, not stale:\n%s", warn)
+	if strings.Contains(warn, fmt.Sprintf("#%d ", dup2)) || strings.Contains(warn, "v0.8.9") {
+		t.Errorf("flagged a person's issue:\n%s", warn)
 	}
 	got := issue(srv, v088).Comments
 	if len(got) != 1 || !strings.Contains(got[0], "v0.8.8 prepare: passed") || !strings.Contains(got[0], "[Workflow run](https://run/1)") ||

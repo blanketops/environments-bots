@@ -40,6 +40,9 @@ type Issue struct {
 	PR bool
 	// Milestone is the number of the issue's milestone; 0 for none.
 	Milestone int
+	// Author is the login of whoever opened it; issues created through
+	// the API get the server's Login.
+	Author string
 }
 
 // ProjectItem is an issue added to the fake project.
@@ -83,6 +86,8 @@ type Server struct {
 	Milestones []*Milestone
 	Pulls      []Pull
 	Branches   map[string]string // branch -> commit
+	// Login is the author of issues created through the API (the App\'s bot).
+	Login string
 }
 
 // New starts a fake for owner/repo that requires token (empty: any).
@@ -98,6 +103,7 @@ func New(owner, repo, token string) *Server {
 		RefCommits:    map[string][]Commit{},
 		Releases:      map[string]Release{},
 		Branches:      map[string]string{},
+		Login: "blanketops-environments-releaser[bot]",
 	}
 	s.Server = httptest.NewServer(http.HandlerFunc(s.handle))
 	return s
@@ -133,6 +139,7 @@ func (s *Server) issueJSON(is *Issue) map[string]any {
 	m := map[string]any{
 		"number": is.Number, "title": is.Title, "state": is.State,
 		"node_id": nodeID(is.Number), "html_url": fmt.Sprintf("https://github.example/%s/%s/issues/%d", s.Owner, s.Repo, is.Number),
+		"user": map[string]string{"login": is.Author},
 	}
 	if is.PR {
 		m["pull_request"] = map[string]any{}
@@ -181,7 +188,7 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 			Labels      []string
 		}
 		_ = json.NewDecoder(r.Body).Decode(&in)
-		is := &Issue{Number: len(s.Issues) + 1, Title: in.Title, Body: in.Body, State: "open", Labels: in.Labels}
+		is := &Issue{Number: len(s.Issues) + 1, Title: in.Title, Body: in.Body, State: "open", Labels: in.Labels, Author: s.Login}
 		s.Issues = append(s.Issues, is)
 		write(w, http.StatusCreated, s.issueJSON(is))
 	case r.Method == http.MethodPost && strings.HasPrefix(rest, "/issues/") && strings.HasSuffix(rest, "/comments"):

@@ -78,6 +78,13 @@ carries, `cut` cuts the branch when someone runs Create Release, a person
 runs Finalize Release (merge and tag), and `complete` attaches the release
 and closes the issue. Releases go out in version order.
 
+Release issues a person opened (for example to plan a go-live) are theirs:
+the releaser reuses one when its version is released, and `complete`
+closes it then, but it never renames, flags or orders releases by them.
+`plan` adopts a person's issue when it names the version the commits need,
+instead of opening a second one. The releaser's own issues are those
+opened by `-bot` (default `blanketops-environments-releaser[bot]`).
+
 | Command | When | What it checks and does |
 |---|---|---|
 | `releaser plan [-ref develop]` | Every push to `develop` | With commits since the latest tag (merge commits do not count) and no planned release, opens the Release issue for the version they need, on the board as `Release`. When the planned version no longer covers the commits and its branch is not cut yet, renames the issue to the version they need and says why. Otherwise does nothing. |

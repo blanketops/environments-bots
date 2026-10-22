@@ -84,7 +84,19 @@ func TestPlanFirstReleaseAndDryRun(t *testing.T) {
 func TestPlanWithPlannedReleases(t *testing.T) {
 	c, srv := setup(t)
 	v088, v089, _, _ := environments(srv)
+	before := len(srv.Issues)
+
+	// People's Release issues (go-live planning): v0.8.8 is what the
+	// commits need, so it is adopted as it is; nothing is flagged.
 	r, err := Plan(context.Background(), c, Options{Ref: "develop"})
+	if err != nil || r.Issue.Number != v088 || r.Failed() || len(r.Warnings) != 1 || len(srv.Issues) != before ||
+		!strings.Contains(r.Note, fmt.Sprintf("#%d plans v0.8.8", v088)) {
+		t.Fatalf("err %v, result %+v", err, r)
+	}
+
+	// The releaser's own planned issues.
+	issue(srv, v088).Author, issue(srv, v089).Author = DefaultBot, DefaultBot
+	r, err = Plan(context.Background(), c, Options{Ref: "develop"})
 	if err != nil || r.Issue.Number != v088 || r.Failed() {
 		t.Fatalf("err %v, issue %d, checks %+v", err, r.Issue.Number, r.Checks)
 	}
@@ -105,7 +117,7 @@ func TestPlanWithPlannedReleases(t *testing.T) {
 func TestPlanRenamesWhenTheCommitsNeedMore(t *testing.T) {
 	c, srv := setup(t)
 	srv.Tags = []githubtest.Tag{{Name: "v0.4.1"}}
-	n := srv.AddIssue(githubtest.Issue{Title: "Release: v0.4.2", Labels: []string{Label}})
+	n := srv.AddIssue(githubtest.Issue{Title: "Release: v0.4.2", Labels: []string{Label}, Author: DefaultBot})
 	srv.Compares["v0.4.1...develop"] = []githubtest.Commit{{SHA: "11111111", Message: "fix: a"}, {SHA: "22222222", Message: "feat(api)!: drop v1"}}
 
 	r, err := Plan(context.Background(), c, Options{Ref: "develop", DryRun: true})
@@ -130,11 +142,23 @@ func TestPlanRenamesWhenTheCommitsNeedMore(t *testing.T) {
 	c2, srv2 := setup(t)
 	srv2.Tags = srv.Tags
 	srv2.Compares = srv.Compares
-	m := srv2.AddIssue(githubtest.Issue{Title: "Release: v0.4.2", Labels: []string{Label}})
+	m := srv2.AddIssue(githubtest.Issue{Title: "Release: v0.4.2", Labels: []string{Label}, Author: DefaultBot})
 	srv2.AddIssue(githubtest.Issue{Title: "Release: v0.5.0", Labels: []string{Label}, State: "closed"})
 	r, err = Plan(context.Background(), c2, Options{Ref: "develop"})
 	if err != nil || !r.Failed() || issue(srv2, m).Title != "Release: v0.4.2" || len(issue(srv2, m).Comments) != 1 {
 		t.Errorf("blocked rename: %v %+v", err, r.Checks)
+	}
+
+	// A person's issue is never renamed: the releaser plans the version
+	// the commits need in an issue of its own.
+	c3, srv3 := setup(t)
+	srv3.Tags, srv3.Compares = srv.Tags, srv.Compares
+	mine := srv3.AddIssue(githubtest.Issue{Title: "Release: v0.4.2", Labels: []string{Label}, Author: "ntlaletsi70"})
+	if r, err = Plan(context.Background(), c3, Options{Ref: "develop"}); err != nil || r.Failed() || !r.IssueCreated {
+		t.Fatalf("person's issue: %v %+v", err, r)
+	}
+	if issue(srv3, mine).Title != "Release: v0.4.2" || len(issue(srv3, mine).Comments) != 0 || srv3.Issue("Release: v0.5.0") == nil {
+		t.Errorf("person's issue touched or v0.5.0 not planned: %+v", srv3.Issues)
 	}
 }
 
@@ -151,7 +175,7 @@ func TestPlanErrors(t *testing.T) {
 		srv.Tags = []githubtest.Tag{{Name: "v0.4.1"}}
 		srv.Compares["v0.4.1...develop"] = []githubtest.Commit{{SHA: "1", Message: "feat!: x"}}
 		if strings.HasPrefix(path, "GET "+base+"/git") || strings.HasPrefix(path, "PATCH") {
-			srv.AddIssue(githubtest.Issue{Title: "Release: v0.4.2", Labels: []string{Label}})
+			srv.AddIssue(githubtest.Issue{Title: "Release: v0.4.2", Labels: []string{Label}, Author: DefaultBot})
 		}
 		srv.FailPaths = map[string]int{path: http.StatusInternalServerError}
 		if _, err := Plan(ctx, c, Options{Ref: "develop"}); err == nil {
@@ -261,13 +285,13 @@ func TestPullBodyWithoutIssue(t *testing.T) {
 func TestPlannedOrderAndCutPrepareError(t *testing.T) {
 	prev := issueVersion(github.Issue{Title: "Release: v0.8.7"})
 	got := planned(map[string][]github.Issue{
-		"v0.9.0": {{Number: 9, State: "open"}, {Number: 4, State: "open"}},
-		"v0.8.8": {{Number: 7, State: "closed"}},
-		"v0.8.7": {{Number: 1, State: "open"}},
-		"":       {{Number: 2, State: "open"}},
-	}, &prev)
+		"v0.9.0": {botIssue(9, "open"), botIssue(4, "open"), {Number: 3, State: "open"}},
+		"v0.8.8": {botIssue(7, "closed")},
+		"v0.8.7": {botIssue(1, "open")},
+		"":       {botIssue(2, "open")},
+	}, &prev, DefaultBot)
 	if len(got) != 2 || got[0].Number != 4 || got[1].Number != 9 {
-		t.Errorf("planned = %+v, want #4 then #9 (same version: oldest first)", got)
+		t.Errorf("planned = %+v, want #4 then #9 (same version: oldest first; #3 is a person's)", got)
 	}
 	c, srv := setup(t)
 	srv.FailPaths = map[string]int{"GET /repos/blanketops/environments/tags": http.StatusInternalServerError}
@@ -279,6 +303,7 @@ func TestPlannedOrderAndCutPrepareError(t *testing.T) {
 func TestPrepareKeepsReleaseOrder(t *testing.T) {
 	c, srv := setup(t)
 	v088, _, _, _ := environments(srv)
+	issue(srv, v088).Author = DefaultBot
 	before := len(srv.Issues)
 	r, err := Prepare(context.Background(), c, Options{Version: "v0.9.0", Ref: "develop"})
 	if err != nil {
@@ -301,5 +326,22 @@ func TestPlanIgnoresTheSyncMergeAfterARelease(t *testing.T) {
 	r, err := Plan(context.Background(), c, Options{Ref: "develop"})
 	if err != nil || len(srv.Issues) != 0 || !strings.Contains(r.Note, "nothing to release") {
 		t.Fatalf("plan after a release: %v %+v, issues %d", err, r, len(srv.Issues))
+	}
+}
+
+func botIssue(n int, state string) github.Issue {
+	is := github.Issue{Number: n, State: state}
+	is.User.Login = DefaultBot
+	return is
+}
+
+func TestCutReleasesTheBotsPlannedIssue(t *testing.T) {
+	c, srv := setup(t)
+	environments(srv)
+	srv.Branches["develop"] = "dev"
+	n := srv.AddIssue(githubtest.Issue{Title: "Release: v0.9.0", Labels: []string{Label}, Author: "other-releaser[bot]"})
+	r, err := Cut(context.Background(), c, Options{Ref: "develop", Bot: "other-releaser[bot]", DryRun: true})
+	if err != nil || r.Failed() || r.Version.String() != "v0.9.0" || r.Issue.Number != n {
+		t.Fatalf("err %v, version %v, issue %d, checks %+v", err, r.Version, r.Issue.Number, r.Checks)
 	}
 }

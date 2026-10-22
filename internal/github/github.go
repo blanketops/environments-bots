@@ -157,6 +157,10 @@ type Issue struct {
 	// PullRequest is set when the "issue" is a pull request; the issues
 	// API lists both.
 	PullRequest *struct{} `json:"pull_request,omitempty"`
+	// User is the issue's author.
+	User struct {
+		Login string `json:"login"`
+	} `json:"user"`
 }
 
 // ListIssues returns every issue, open or closed, carrying label (every

@@ -133,6 +133,7 @@ func runCommand(name string, cmd command, args []string, stdout, stderr io.Write
 	fs.StringVar(&apiURL, "api-url", getenv("GITHUB_API_URL"), "GitHub API URL (default $GITHUB_API_URL, else https://api.github.com)")
 	fs.StringVar(&summary, "summary", getenv("GITHUB_STEP_SUMMARY"), "file to append the markdown summary to (default $GITHUB_STEP_SUMMARY)")
 	fs.StringVar(&opts.RunURL, "run-url", runURL(getenv), "link to the workflow run (default from $GITHUB_SERVER_URL, $GITHUB_REPOSITORY, $GITHUB_RUN_ID)")
+	fs.StringVar(&opts.Bot, "bot", release.DefaultBot, "the releaser's own login: only Release issues it opened are planned, renamed or flagged")
 	fs.BoolVar(&opts.DryRun, "dry-run", false, "read only: show the checks without commenting, opening or closing anything")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
