@@ -24,6 +24,7 @@ import (
 
 	"github.com/blanketops/environments-bots/internal/github"
 	"github.com/blanketops/environments-bots/internal/github/githubtest"
+	"github.com/blanketops/environments-bots/internal/semver"
 )
 
 func TestPlanNothingToRelease(t *testing.T) {
@@ -343,5 +344,57 @@ func TestCutReleasesTheBotsPlannedIssue(t *testing.T) {
 	r, err := Cut(context.Background(), c, Options{Ref: "develop", Bot: "other-releaser[bot]", DryRun: true})
 	if err != nil || r.Failed() || r.Version.String() != "v0.9.0" || r.Issue.Number != n {
 		t.Fatalf("err %v, version %v, issue %d, checks %+v", err, r.Version, r.Issue.Number, r.Checks)
+	}
+}
+
+func TestSingleDigitVersions(t *testing.T) {
+	ctx := context.Background()
+
+	// cli: v0.1.9 is followed by v0.2.0, never v0.1.10.
+	c, srv := setup(t)
+	srv.Tags = []githubtest.Tag{{Name: "v0.1.9"}}
+	srv.Compares["v0.1.9...develop"] = []githubtest.Commit{{SHA: "1", Message: "ci: x"}}
+	r, err := Plan(ctx, c, Options{Ref: "develop"})
+	if err != nil || r.Failed() || srv.Issue("Release: v0.2.0") == nil || srv.Issue("Release: v0.1.10") != nil {
+		t.Fatalf("plan after v0.1.9: %v %+v", err, r)
+	}
+	r, err = Prepare(ctx, c, Options{Version: "v0.1.10", Ref: "develop", DryRun: true})
+	if err == nil || !strings.Contains(err.Error(), "single digit") {
+		t.Errorf("v0.1.10 accepted: %v %+v", err, r)
+	}
+	r, err = Prepare(ctx, c, Options{Version: "v0.2.1", Ref: "develop", DryRun: true})
+	if err != nil || checkOf(t, r, "Version").OK || !strings.Contains(checkOf(t, r, "Version").Detail, "the next version is v0.2.0 or v1.0.0") {
+		t.Errorf("v0.2.1 after v0.1.9: %v %+v", err, r)
+	}
+
+	// docs: v0.0.9 with a person's "Release: v0.1.0" — adopted, not duplicated.
+	c2, srv2 := setup(t)
+	srv2.Tags = []githubtest.Tag{{Name: "v0.0.9"}}
+	srv2.Compares["v0.0.9...develop"] = []githubtest.Commit{{SHA: "1", Message: "ci: x"}}
+	mine := srv2.AddIssue(githubtest.Issue{Title: "Release: v0.1.0", Labels: []string{Label}, Author: "ntlaletsi70"})
+	r, err = Plan(ctx, c2, Options{Ref: "develop"})
+	if err != nil || r.Issue.Number != mine || len(srv2.Issues) != 1 {
+		t.Fatalf("plan after v0.0.9: %v %+v, issues %d", err, r, len(srv2.Issues))
+	}
+
+	// A breaking change before v1.0.0 after v0.0.9: v0.1.0 is the minor too.
+	srv2.Compares["v0.0.9...develop"] = []githubtest.Commit{{SHA: "2", Message: "feat!: y"}}
+	r, err = Prepare(ctx, c2, Options{Version: "v0.1.0", Ref: "develop", DryRun: true})
+	if err != nil || !checkOf(t, r, "Semantic version").OK {
+		t.Errorf("v0.1.0 after v0.0.9 with a breaking change: %v %+v", err, r.Checks)
+	}
+
+	// The end of the line: nothing follows v9.9.9.
+	c3, srv3 := setup(t)
+	srv3.Tags = []githubtest.Tag{{Name: "v9.9.9"}}
+	srv3.Compares["v9.9.9...develop"] = []githubtest.Commit{{SHA: "1", Message: "fix: x"}}
+	if r, err = Plan(ctx, c3, Options{Ref: "develop"}); err != nil || !r.Failed() || len(srv3.Issues) != 0 {
+		t.Errorf("plan after v9.9.9: %v %+v", err, r)
+	}
+	if got := successors(semver.Version{Major: 9, Minor: 9, Patch: 9}); !strings.Contains(got, "no single-digit version") {
+		t.Errorf("successors(v9.9.9) = %q", got)
+	}
+	if got := successors(semver.Version{Major: 9, Minor: 9, Patch: 8}); got != "v9.9.9" {
+		t.Errorf("successors(v9.9.8) = %q", got)
 	}
 }
