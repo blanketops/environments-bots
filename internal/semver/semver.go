@@ -14,42 +14,33 @@ limitations under the License.
 */
 
 // Package semver is the release-version arithmetic of the BlanketOps
-// family: tags are vMAJOR.MINOR.PATCH, and the bump a release needs comes
-// from the Conventional Commits it contains.
+// family: tags are vMAJOR.MINOR.PATCH with every part a single digit (0-9),
+// counting carries (v0.0.9 is followed by v0.1.0, v0.9.9 by v1.0.0), and
+// the bump a release needs comes from the Conventional Commits it contains.
 package semver
 
 import (
 	"fmt"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 )
 
 // Version is a release version vMAJOR.MINOR.PATCH.
 type Version struct{ Major, Minor, Patch int }
 
-var versionRE = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
+var versionRE = regexp.MustCompile(`^v([0-9])\.([0-9])\.([0-9])$`)
 
-// Parse reads "vX.Y.Z". Pre-release and build suffixes are not release
-// versions here and are rejected.
+// Parse reads "vX.Y.Z" with every part a single digit. Larger parts
+// (v0.0.10), pre-release and build suffixes are not BlanketOps release
+// versions and are rejected.
 func Parse(s string) (Version, error) {
 	m := versionRE.FindStringSubmatch(s)
 	if m == nil {
-		return Version{}, fmt.Errorf("%q is not a release version (vMAJOR.MINOR.PATCH)", s)
+		return Version{}, fmt.Errorf("%q is not a release version (vMAJOR.MINOR.PATCH, each part a single digit 0-9)", s)
 	}
-	var v Version
-	var err error
-	if v.Major, err = strconv.Atoi(m[1]); err != nil {
-		return Version{}, err
-	}
-	if v.Minor, err = strconv.Atoi(m[2]); err != nil {
-		return Version{}, err
-	}
-	if v.Patch, err = strconv.Atoi(m[3]); err != nil {
-		return Version{}, err
-	}
-	return v, nil
+	// Each part is one ASCII digit (the pattern allows nothing else).
+	return Version{Major: int(m[1][0] - '0'), Minor: int(m[2][0] - '0'), Patch: int(m[3][0] - '0')}, nil
 }
 
 func (v Version) String() string { return fmt.Sprintf("v%d.%d.%d", v.Major, v.Minor, v.Patch) }
@@ -88,20 +79,40 @@ func (b Bump) String() string {
 	}
 }
 
-// Next returns v bumped by b.
+// Next returns v bumped by b. Parts are single digits, so a 9 carries into
+// the part above: Next(Patch) of v0.0.9 is v0.1.0, of v0.9.9 is v1.0.0.
+// Past v9.x.x there is no next major: Valid reports false for the result.
 func (v Version) Next(b Bump) Version {
 	switch b {
 	case Major:
 		return Version{Major: v.Major + 1}
 	case Minor:
+		if v.Minor == 9 {
+			return v.Next(Major)
+		}
 		return Version{Major: v.Major, Minor: v.Minor + 1}
 	default:
+		if v.Patch == 9 {
+			return v.Next(Minor)
+		}
 		return Version{Major: v.Major, Minor: v.Minor, Patch: v.Patch + 1}
 	}
 }
 
-// StepFrom reports which single bump takes prev to v. ok is false when v is
-// not one of prev's three successors (lower, equal, or a skipped number).
+// Valid reports whether every part of v is a single digit.
+func (v Version) Valid() bool {
+	for _, p := range []int{v.Major, v.Minor, v.Patch} {
+		if p < 0 || p > 9 {
+			return false
+		}
+	}
+	return true
+}
+
+// StepFrom reports the smallest bump that takes prev to v (with carries,
+// two bumps can give the same version: from v0.0.9 both patch and minor
+// give v0.1.0, which is reported as patch). ok is false when v is not one
+// of prev's successors (lower, equal, or a skipped number).
 func (v Version) StepFrom(prev Version) (Bump, bool) {
 	for _, b := range []Bump{Patch, Minor, Major} {
 		if prev.Next(b) == v {

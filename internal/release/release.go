@@ -362,8 +362,8 @@ func prepare(ctx context.Context, api API, opts Options) (*Result, error) {
 			versionOK = true
 			r.check("Version", true, "%s is the %s release after %s", r.Version, bump, prev)
 		} else {
-			r.check("Version", false, "%s does not follow the latest release %s; the next version is %s, %s or %s",
-				r.Version, prev, prev.Next(semver.Patch), prev.Next(semver.Minor), prev.Next(semver.Major))
+			r.check("Version", false, "%s does not follow the latest release %s; the next version is %s",
+				r.Version, prev, successors(*prev))
 		}
 	}
 
@@ -379,7 +379,9 @@ func prepare(ctx context.Context, api API, opts Options) (*Result, error) {
 	if prev != nil && versionOK {
 		r.Required = semver.Required(*prev, commits)
 		chosen, _ := r.Version.StepFrom(*prev)
-		if chosen < r.Required {
+		// By version, not by bump name: with carries, v0.0.9 to v0.1.0 is
+		// both the next patch and the next minor.
+		if r.Version.Compare(prev.Next(r.Required)) < 0 {
 			r.check("Semantic version", false, "the commits need a %s release (%s), not %s: %s",
 				r.Required, prev.Next(r.Required), r.Version, needing(*prev, commits, r.Required))
 		} else {
@@ -464,6 +466,27 @@ func (r *Result) commitsSince(ctx context.Context, api API, prev *semver.Version
 	return commits, nil
 }
 
+// successors lists the distinct single-digit versions that may follow prev,
+// smallest first: "v0.1.0 or v1.0.0" after v0.0.9.
+func successors(prev semver.Version) string {
+	var out []string
+	seen := map[semver.Version]bool{}
+	for _, b := range []semver.Bump{semver.Patch, semver.Minor, semver.Major} {
+		if v := prev.Next(b); v.Valid() && !seen[v] {
+			seen[v] = true
+			out = append(out, v.String())
+		}
+	}
+	switch len(out) {
+	case 0:
+		return "none: no single-digit version follows it"
+	case 1:
+		return out[0]
+	default:
+		return strings.Join(out[:len(out)-1], ", ") + " or " + out[len(out)-1]
+	}
+}
+
 // next is the version the commits need after prev: v0.0.1 for a first
 // release.
 func next(prev *semver.Version, commits []semver.Commit) semver.Version {
@@ -540,6 +563,10 @@ func Plan(ctx context.Context, api API, opts Options) (*Result, error) {
 		return r, nil
 	}
 	need := next(r.Previous, commits)
+	if !need.Valid() {
+		r.check("Version", false, "the commits need a release after %s, and no single-digit version follows it", r.Previous)
+		return r, nil
+	}
 	if r.Previous != nil {
 		r.Required = semver.Required(*r.Previous, commits)
 	}
