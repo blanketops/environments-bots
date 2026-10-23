@@ -27,27 +27,28 @@ func mustParse(t *testing.T, s string) Version {
 }
 
 func TestParse(t *testing.T) {
-	for _, bad := range []string{"", "0.1.0", "v1.2", "v1.2.3-rc.1", "v01.2.3", "v1.2.3+b", "vx.1.2", "v99999999999999999999.0.0", "v0.99999999999999999999.0", "v0.0.99999999999999999999"} {
+	for _, bad := range []string{"", "0.1.0", "v1.2", "v1.2.3-rc.1", "v01.2.3", "v1.2.3+b", "vx.1.2", "V0.0.7",
+		"v0.0.10", "v0.10.0", "v10.0.0", "v0.1.10"} {
 		if _, err := Parse(bad); err == nil {
 			t.Errorf("Parse(%q) accepted", bad)
 		}
 	}
-	if v := mustParse(t, "v10.0.7"); v != (Version{10, 0, 7}) || v.String() != "v10.0.7" {
-		t.Errorf("Parse(v10.0.7) = %+v", v)
+	if v := mustParse(t, "v7.0.9"); v != (Version{7, 0, 9}) || v.String() != "v7.0.9" {
+		t.Errorf("Parse(v7.0.9) = %+v", v)
 	}
 }
 
 func TestCompareAndLatest(t *testing.T) {
-	a, b := mustParse(t, "v0.8.10"), mustParse(t, "v0.8.9")
+	a, b := mustParse(t, "v0.9.0"), mustParse(t, "v0.8.9")
 	if a.Compare(b) != 1 || b.Compare(a) != -1 || a.Compare(a) != 0 {
-		t.Error("v0.8.10 must sort above v0.8.9 numerically")
+		t.Error("v0.9.0 must sort above v0.8.9")
 	}
 	if mustParse(t, "v1.0.0").Compare(mustParse(t, "v0.9.9")) != 1 || mustParse(t, "v0.2.0").Compare(mustParse(t, "v0.1.9")) != 1 {
 		t.Error("major and minor must dominate")
 	}
-	got, ok := Latest([]string{"v0.8.9", "latest", "v0.8.10", "v0.9.0-rc.1", "v0.2.0"})
-	if !ok || got.String() != "v0.8.10" {
-		t.Errorf("Latest = %v, %v; want v0.8.10", got, ok)
+	got, ok := Latest([]string{"v0.8.9", "latest", "v0.8.10", "V0.9.0", "v0.9.0-rc.1", "v0.2.0", "contracts/2026"})
+	if !ok || got.String() != "v0.8.9" {
+		t.Errorf("Latest = %v, %v; want v0.8.9 (v0.8.10 and the others are not release versions)", got, ok)
 	}
 	if _, ok := Latest([]string{"nightly"}); ok {
 		t.Error("Latest with no release tag must report none")
@@ -65,6 +66,34 @@ func TestStepFrom(t *testing.T) {
 		if _, ok := mustParse(t, s).StepFrom(prev); ok {
 			t.Errorf("%s from v0.8.7 accepted; it is not a next version", s)
 		}
+	}
+	// Single digits carry: the release after v0.0.9 is v0.1.0.
+	carry := []struct {
+		prev, next string
+		bump       Bump
+	}{
+		{"v0.0.9", "v0.1.0", Patch},
+		{"v0.1.9", "v0.2.0", Patch},
+		{"v0.9.9", "v1.0.0", Patch},
+		{"v0.9.3", "v1.0.0", Minor},
+		{"v0.0.9", "v1.0.0", Major},
+	}
+	for _, c := range carry {
+		if got := mustParse(t, c.prev).Next(c.bump); got.String() != c.next || !got.Valid() {
+			t.Errorf("%s.Next(%v) = %v, want %s", c.prev, c.bump, got, c.next)
+		}
+	}
+	if b, ok := mustParse(t, "v0.1.0").StepFrom(mustParse(t, "v0.0.9")); !ok || b != Patch {
+		t.Errorf("v0.1.0 from v0.0.9 = %v, %v; want the next patch (with carry)", b, ok)
+	}
+	if _, ok := mustParse(t, "v0.0.9").StepFrom(mustParse(t, "v0.0.8")); !ok {
+		t.Error("v0.0.9 must follow v0.0.8")
+	}
+	if v := mustParse(t, "v9.9.9").Next(Patch); v.Valid() || v.String() != "v10.0.0" {
+		t.Errorf("past v9.9.9: %v valid=%v; want v10.0.0, not valid", v, v.Valid())
+	}
+	if (Version{Patch: -1}).Valid() {
+		t.Error("negative part is not valid")
 	}
 	if Major.String() != "major" || Minor.String() != "minor" || Patch.String() != "patch" {
 		t.Error("Bump names")

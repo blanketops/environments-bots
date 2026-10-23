@@ -100,6 +100,11 @@ anything else a patch. Before v1.0.0 a breaking change needs a minor release
 and everything else a patch. A larger bump than needed is accepted; a skipped
 version (v0.8.7 to v0.8.9) is not.
 
+Every part of a BlanketOps version is a single digit, 0 to 9, and a 9
+carries into the part above: the release after v0.0.9 is v0.1.0, after
+v0.1.9 v0.2.0, after v0.9.9 v1.0.0. A version with a larger part (v0.0.10)
+is refused, and tags that are not `vX.Y.Z` in this form are not releases.
+
 `-project blanketops/1` keeps the issue on the board; `-dry-run` reads only.
 The token comes from `GH_TOKEN` (or `GITHUB_TOKEN`); the workflows mint one
 for the BlanketOps Environments Releaser App (secrets `RELEASER_APP_ID` and
