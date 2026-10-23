@@ -1,3 +1,16 @@
+## [0.0.2] - 2026-10-23
+
+### 🚀 Features
+
+- *(releaser)* Run the releaser from any repository with one action
+
+### 🐛 Bug Fixes
+
+- *(releaser)* Say so when the release pull request is already merged
+
+### ⚙️ Miscellaneous Tasks
+
+- Sync develop with main after release/v0.0.1
 ## [0.0.1] - 2026-10-22
 
 ### 🚀 Features
@@ -28,3 +41,4 @@
 - Run the releaser in the release workflows
 - Plan on develop pushes and cut with the releaser
 - *(finalize)* Continue when the release pull request is already merged
+- *(release)* Update changelog for v0.0.1 (#9)
