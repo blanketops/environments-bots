@@ -1,3 +1,20 @@
+## [0.0.3] - 2026-10-23
+
+### 🐛 Bug Fixes
+
+- *(releaser)* Keep every version part a single digit
+
+### 💼 Other
+
+- Merge release/v0.0.3 into main
+
+### 📚 Documentation
+
+- Auto-generate code documentation [skip ci] (#17)
+
+### ⚙️ Miscellaneous Tasks
+
+- Sync develop with main after release/v0.0.2
 ## [0.0.2] - 2026-10-23
 
 ### 🚀 Features
@@ -11,6 +28,7 @@
 ### ⚙️ Miscellaneous Tasks
 
 - Sync develop with main after release/v0.0.1
+- *(release)* Update changelog for v0.0.2 (#13)
 ## [0.0.1] - 2026-10-22
 
 ### 🚀 Features
