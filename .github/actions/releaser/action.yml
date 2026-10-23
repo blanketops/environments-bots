@@ -1,0 +1,122 @@
+# =============================================================================
+# releaser — run cmd/releaser in any BlanketOps repository
+#
+# Mints an installation token of the BlanketOps Environments Releaser App
+# for the calling repository, downloads the releaser binary of the
+# environments-bots release this action is used at (uses: ...@vX.Y.Z runs
+# releaser vX.Y.Z), verifies its Sigstore bundle against that release's
+# workflow identity with cosign, and runs one command. A binary that does
+# not verify is never run.
+#
+#   - uses: blanketops/environments-bots/.github/actions/releaser@v0.0.2
+#     with:
+#       command: cut            # plan | cut | prepare | verify | complete
+#       release: ${{ inputs.version }}   # optional for plan and cut
+#       app-id: ${{ secrets.RELEASER_APP_ID }}
+#       private-key: ${{ secrets.RELEASER_APP_PRIVATE_KEY }}
+#
+# cosign comes from the runner image (zenith-runner-toolchain).
+# =============================================================================
+
+name: releaser
+description: Run the BlanketOps releaser as the Releaser App, from a verified environments-bots release
+inputs:
+  command:
+    description: "plan, cut, prepare, verify or complete"
+    required: true
+  release:
+    description: "The release, vX.Y.Z (empty: plan ignores it; cut takes the planned release)"
+    required: false
+    default: ""
+  ref:
+    description: "Branch releases are cut from (plan, cut, prepare)"
+    required: false
+    default: develop
+  project:
+    description: "Organization project the Release issue is kept on, as org/number"
+    required: false
+    default: blanketops/1
+  app-id:
+    description: "Releaser App ID"
+    required: true
+  private-key:
+    description: "Releaser App private key"
+    required: true
+  releaser-version:
+    description: "environments-bots release to run (default: the tag this action is used at)"
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Releaser App token
+      id: token
+      uses: actions/create-github-app-token@v3
+      with:
+        app-id: ${{ inputs.app-id }}
+        private-key: ${{ inputs.private-key }}
+        owner: ${{ github.repository_owner }}
+        repositories: ${{ github.event.repository.name }}
+
+    - name: Download and verify releaser
+      shell: bash
+      env:
+        PINNED: ${{ inputs.releaser-version }}
+        ACTION_REF: ${{ github.action_ref }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        # The version: the input, else the tag this action is used at. The
+        # runner checks the action out under .../environments-bots/<ref>/,
+        # which also holds when github.action_ref is empty in a composite.
+        VERSION=${PINNED:-$ACTION_REF}
+        if [ -z "$VERSION" ]; then
+          rest=${ACTION_PATH#*/environments-bots/}
+          VERSION=${rest%%/*}
+        fi
+        if ! [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "::error::releaser version '${VERSION}' is not a release tag: use the action at @vX.Y.Z or set releaser-version"
+          exit 1
+        fi
+        case "$(uname -m)" in
+          x86_64) arch=amd64 ;;
+          aarch64 | arm64) arch=arm64 ;;
+          *) echo "::error::unsupported architecture $(uname -m)"; exit 1 ;;
+        esac
+        dir="${RUNNER_TEMP}/releaser-${VERSION}"
+        mkdir -p "$dir"
+        base="https://github.com/blanketops/environments-bots/releases/download/${VERSION}"
+        curl -fsSL -o "${dir}/releaser" "${base}/releaser-linux-${arch}"
+        curl -fsSL -o "${dir}/releaser.sigstore.json" "${base}/releaser-linux-${arch}.sigstore.json"
+        cosign verify-blob --bundle "${dir}/releaser.sigstore.json" \
+          --certificate-identity "https://github.com/blanketops/environments-bots/.github/workflows/release.yml@refs/tags/${VERSION}" \
+          --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+          "${dir}/releaser"
+        chmod +x "${dir}/releaser"
+        got=$("${dir}/releaser" version)
+        if [ "$got" != "$VERSION" ]; then
+          echo "::error::downloaded releaser reports ${got}, want ${VERSION}"
+          exit 1
+        fi
+        echo "RELEASER_BIN=${dir}/releaser" >> "$GITHUB_ENV"
+
+    - name: releaser ${{ inputs.command }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ steps.token.outputs.token }}
+        COMMAND: ${{ inputs.command }}
+        RELEASE: ${{ inputs.release }}
+        REF: ${{ inputs.ref }}
+        PROJECT: ${{ inputs.project }}
+      run: |
+        set -euo pipefail
+        args=(-project "$PROJECT")
+        case "$COMMAND" in
+          plan | cut | prepare) args+=(-ref "$REF") ;;
+          verify | complete) ;;
+          *) echo "::error::unknown releaser command '${COMMAND}'"; exit 2 ;;
+        esac
+        if [ -n "$RELEASE" ]; then
+          args+=(-release "$RELEASE")
+        fi
+        "$RELEASER_BIN" "$COMMAND" "${args[@]}"
