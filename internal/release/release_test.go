@@ -347,6 +347,22 @@ func TestVerify(t *testing.T) {
 		t.Errorf("warnings %q, comment %q", r.Warnings, Comment(r))
 	}
 
+	// The release pull request was merged by hand before finalize ran.
+	srv.Pulls = []githubtest.Pull{{Number: 41, State: "closed", Base: "main", Head: "release/v0.8.8", Merged: true}}
+	r, err = Verify(ctx, c, Options{Version: "v0.8.8"})
+	if err != nil || r.Failed() || r.ReleasePR == nil || r.ReleasePR.Number != 41 {
+		t.Fatalf("merged by hand: %v %+v", err, r)
+	}
+	if w := strings.Join(r.Warnings, "\n"); !strings.Contains(w, "#41 is already merged into main; finalize continues from main") || strings.Contains(w, "finalize opens one") {
+		t.Errorf("warnings %q", w)
+	}
+	srv.FailPaths = map[string]int{"GET /repos/blanketops/environments/pulls?base=main&head=blanketops%3Arelease%2Fv0.8.8&page=1&per_page=100&state=closed": http.StatusBadGateway}
+	if _, err := Verify(ctx, c, Options{Version: "v0.8.8"}); err == nil {
+		t.Error("failure of the merged release pull request lookup not reported")
+	}
+	srv.FailPaths = map[string]int{}
+	srv.Pulls = nil
+
 	srv.Tags = append(srv.Tags, githubtest.Tag{Name: "v0.8.8"})
 	issue(srv, n).State = "closed"
 	r, err = Verify(ctx, c, Options{Version: "v0.8.8"})
