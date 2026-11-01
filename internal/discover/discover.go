@@ -79,6 +79,9 @@ type Options struct {
 	// Exclude lists subtrees, relative to the root, whose files are never
 	// test files. Default ["tests/data"].
 	Exclude []string
+	// Layer limits discovery to files whose first directory under TestsDir
+	// matches this value (e.g. "benchmark" or "profile"). Empty means all.
+	Layer string
 }
 
 func (o Options) withDefaults() Options {
@@ -94,6 +97,9 @@ func (o Options) withDefaults() Options {
 		exclude[i] = path.Clean(filepath.ToSlash(e))
 	}
 	o.Exclude = exclude
+	if o.Layer != "" {
+		o.Layer = path.Clean(filepath.ToSlash(o.Layer))
+	}
 	return o
 }
 
@@ -132,6 +138,18 @@ func Discover(root string, opts Options) ([]File, error) {
 			if excluded(rel, opts.Exclude) {
 				return filepath.SkipDir
 			}
+			// If Layer is set, skip directories that don't match at the first level under TestsDir.
+					if opts.Layer != "" {
+						// Check if this is a direct child of testsRoot.
+						relFromTests, _ := filepath.Rel(testsRoot, p)
+						relFromTests = filepath.ToSlash(relFromTests)
+						if relFromTests != "." && !strings.HasPrefix(relFromTests, "../") {
+							firstDir := strings.Split(relFromTests, "/")[0]
+							if firstDir != opts.Layer {
+								return filepath.SkipDir
+							}
+						}
+					}
 			return nil
 		}
 		if !strings.HasSuffix(rel, "_test.go") || excluded(rel, opts.Exclude) {
@@ -200,16 +218,32 @@ func parseFile(fset *token.FileSet, p, rel, testsDir string) (File, error) {
 
 // isTestFunc reports whether d is a Go test function as go test sees it: no
 // receiver, a name that is "Test" or "Test" followed by a non-lowercase rune,
-// and one parameter of type *testing.T (or *T under a dot import).
+// or a benchmark function (func BenchmarkXxx(b *testing.B)), and one parameter
+// of type *testing.T or *testing.B (or *T/*B under a dot import).
 // TestMain(m *testing.M) is the package's setup hook, not a test.
 func isTestFunc(d *ast.FuncDecl) bool {
-	if d.Recv != nil || !strings.HasPrefix(d.Name.Name, "Test") {
+	if d.Recv != nil {
 		return false
 	}
-	if rest := d.Name.Name[len("Test"):]; rest != "" {
-		r, _ := utf8.DecodeRuneInString(rest)
-		if unicode.IsLower(r) {
-			return false
+	name := d.Name.Name
+	isTest := strings.HasPrefix(name, "Test")
+	isBench := strings.HasPrefix(name, "Benchmark")
+	if !isTest && !isBench {
+		return false
+	}
+	if isTest {
+		if rest := name[len("Test"):]; rest != "" {
+			r, _ := utf8.DecodeRuneInString(rest)
+			if unicode.IsLower(r) {
+				return false
+			}
+		}
+	} else if isBench {
+		if rest := name[len("Benchmark"):]; rest != "" {
+			r, _ := utf8.DecodeRuneInString(rest)
+			if unicode.IsLower(r) {
+				return false
+			}
 		}
 	}
 	params := d.Type.Params.List
@@ -222,9 +256,15 @@ func isTestFunc(d *ast.FuncDecl) bool {
 	}
 	switch t := star.X.(type) {
 	case *ast.SelectorExpr:
-		return t.Sel.Name == "T"
+		if isTest {
+			return t.Sel.Name == "T"
+		}
+		return t.Sel.Name == "B"
 	case *ast.Ident:
-		return t.Name == "T"
+		if isTest {
+			return t.Name == "T"
+		}
+		return t.Name == "B"
 	}
 	return false
 }
