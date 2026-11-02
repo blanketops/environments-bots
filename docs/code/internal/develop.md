@@ -13,8 +13,13 @@ Sync opens one pull request that merges main into develop whenever main is ahead
 ## Index
 
 - [Constants](<#constants>)
+- [func OpenSummary\(res OpenResult, dryRun bool\) string](<#OpenSummary>)
 - [func SyncSummary\(res SyncResult, dryRun bool\) string](<#SyncSummary>)
 - [type API](<#API>)
+- [type OpenAPI](<#OpenAPI>)
+- [type OpenOptions](<#OpenOptions>)
+- [type OpenResult](<#OpenResult>)
+  - [func Open\(ctx context.Context, api OpenAPI, opts OpenOptions\) \(OpenResult, error\)](<#Open>)
 - [type SyncOptions](<#SyncOptions>)
 - [type SyncResult](<#SyncResult>)
   - [func Sync\(ctx context.Context, api API, opts SyncOptions\) \(SyncResult, error\)](<#Sync>)
@@ -30,6 +35,21 @@ const (
     DevelopBranch = "develop"
 )
 ```
+
+<a name="TrackLabel"></a>TrackLabel marks the tracking issue and the pull request the developer bot opens for a branch.
+
+```go
+const TrackLabel = "pr-tracking"
+```
+
+<a name="OpenSummary"></a>
+## func OpenSummary
+
+```go
+func OpenSummary(res OpenResult, dryRun bool) string
+```
+
+OpenSummary is the markdown summary of an Open.
 
 <a name="SyncSummary"></a>
 ## func SyncSummary
@@ -56,6 +76,70 @@ type API interface {
     CreatePull(ctx context.Context, title, head, base, body string) (github.Pull, error)
 }
 ```
+
+<a name="OpenAPI"></a>
+## type OpenAPI
+
+OpenAPI is the part of the GitHub client Open uses.
+
+```go
+type OpenAPI interface {
+    ListPulls(ctx context.Context, state, base, head string) ([]github.Pull, error)
+    ListCommits(ctx context.Context, ref string) ([]github.Commit, error)
+    CreatePull(ctx context.Context, title, head, base, body string) (github.Pull, error)
+    EnsureLabel(ctx context.Context, name, color, description string) error
+    ListIssues(ctx context.Context, label string) ([]github.Issue, error)
+    CreateIssue(ctx context.Context, title, body string, labels []string) (github.Issue, error)
+    Comment(ctx context.Context, number int, body string) error
+    AddLabels(ctx context.Context, number int, labels []string) error
+}
+```
+
+<a name="OpenOptions"></a>
+## type OpenOptions
+
+OpenOptions configures Open.
+
+```go
+type OpenOptions struct {
+    // Branch is the pushed branch; Base is the pull request's base (default
+    // develop).
+    Branch, Base string
+    // DryRun only reports what it would do.
+    DryRun bool
+}
+```
+
+<a name="OpenResult"></a>
+## type OpenResult
+
+OpenResult is the outcome of Open.
+
+```go
+type OpenResult struct {
+    Branch, Base string
+    // Skipped is non-empty when Branch is long-lived and gets no pull request.
+    Skipped string
+    // Existing is a pull request from Branch that was already open.
+    Existing *github.Pull
+    // Title is the pull request title (the branch's latest commit subject).
+    Title string
+    // Labels are applied to both the pull request and the tracking issue.
+    Labels []string
+    // Pull and Issue are what Open created (Issue may be reused).
+    Pull  *github.Pull
+    Issue *github.Issue
+}
+```
+
+<a name="Open"></a>
+### func Open
+
+```go
+func Open(ctx context.Context, api OpenAPI, opts OpenOptions) (OpenResult, error)
+```
+
+Open opens a pull request for Branch into Base on its first push \(when no pull request from it is open yet\) and a tracking issue mapped one\-to\-one to that pull request, both labelled with pr\-tracking and the branch's Conventional Commit type. It is idempotent — a branch that already has an open pull request, or a long\-lived branch, does nothing — and reuses an open tracking issue a closed pull request left behind.
 
 <a name="SyncOptions"></a>
 ## type SyncOptions
