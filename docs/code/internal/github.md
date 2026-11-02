@@ -17,6 +17,7 @@ Package github is the small part of the GitHub REST and GraphQL APIs that test\-
   - [func \(e \*APIError\) Error\(\) string](<#APIError.Error>)
 - [type Client](<#Client>)
   - [func New\(baseURL, token, repository string\) \(\*Client, error\)](<#New>)
+  - [func \(c \*Client\) AddLabels\(ctx context.Context, number int, labels \[\]string\) error](<#Client.AddLabels>)
   - [func \(c \*Client\) AddToProject\(ctx context.Context, p Project, issueNodeID, status string\) error](<#Client.AddToProject>)
   - [func \(c \*Client\) BranchSHA\(ctx context.Context, branch string\) \(string, error\)](<#Client.BranchSHA>)
   - [func \(c \*Client\) CloseIssue\(ctx context.Context, number int\) error](<#Client.CloseIssue>)
@@ -118,6 +119,15 @@ func New(baseURL, token, repository string) (*Client, error)
 ```
 
 New returns a client for the repository "owner/name".
+
+<a name="Client.AddLabels"></a>
+### func \(\*Client\) AddLabels
+
+```go
+func (c *Client) AddLabels(ctx context.Context, number int, labels []string) error
+```
+
+AddLabels adds labels to an issue or pull request \(pull requests are labelled through the issues API\). Adding a label that is already there is a no\-op, so this is safe to repeat.
 
 <a name="Client.AddToProject"></a>
 ### func \(\*Client\) AddToProject

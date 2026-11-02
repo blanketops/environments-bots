@@ -110,6 +110,7 @@ type Pull struct {
     Base, Head string
     Merged     bool
     Body       string
+    Labels     []string
 }
 ```
 
