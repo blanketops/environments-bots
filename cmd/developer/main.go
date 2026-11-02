@@ -13,10 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Command developer keeps a repository's develop branch in step with main.
+// Command developer keeps a repository's branches in order.
 //
 //	developer sync    open a pull request merging main into develop when
 //	                  main is ahead
+//	developer open    open a pull request and a tracking issue for a branch
+//	                  on its first push
 //
 // GitHub is reached with the token in GH_TOKEN (or GITHUB_TOKEN), normally
 // an installation token of the BlanketOps Environments Developer App.
@@ -39,13 +41,14 @@ import (
 // -ldflags "-X main.version=<tag>".
 var version = "dev"
 
-const usage = `developer keeps a repository's develop branch in step with main.
+const usage = `developer keeps a repository's branches in order.
 
 Usage:
   developer <command> [flags]
 
 Commands:
   sync      Open a pull request merging main into develop when main is ahead
+  open      Open a pull request and a tracking issue for a branch on its first push
   version   Print the version
   help      Print this help
 
@@ -73,6 +76,8 @@ func run(args []string, stdout, stderr io.Writer, getenv func(string) string) in
 		return 0
 	case "sync":
 		return runSync(args[1:], stdout, stderr, getenv)
+	case "open":
+		return runOpen(args[1:], stdout, stderr, getenv)
 	default:
 		_, _ = fmt.Fprintf(stderr, "developer: unknown command %q\n\n%s", args[0], usage)
 		return 2
@@ -170,6 +175,36 @@ func runSync(args []string, stdout, stderr io.Writer, getenv func(string) string
 	}
 	if err := c.emit(stdout, develop.SyncSummary(res, c.dryRun)); err != nil {
 		return fail(stderr, "sync", err)
+	}
+	return 0
+}
+
+func runOpen(args []string, stdout, stderr io.Writer, getenv func(string) string) int {
+	fs := flag.NewFlagSet("open", flag.ContinueOnError)
+	var c common
+	c.register(fs, getenv)
+	branch := fs.String("branch", getenv("GITHUB_REF_NAME"), "the pushed branch (default $GITHUB_REF_NAME)")
+	base := fs.String("base", develop.DevelopBranch, "base branch for the pull request")
+	if code, ok := parse(fs, args, stderr); !ok {
+		return code
+	}
+	if *branch == "" {
+		_, _ = fmt.Fprintln(stderr, "developer open: no branch: set -branch or $GITHUB_REF_NAME")
+		return 2
+	}
+
+	api, err := c.client(getenv)
+	if err != nil {
+		return fail(stderr, "open", err)
+	}
+	ctx, cancel := commandContext()
+	defer cancel()
+	res, err := develop.Open(ctx, api, develop.OpenOptions{Branch: *branch, Base: *base, DryRun: c.dryRun})
+	if err != nil {
+		return fail(stderr, "open", err)
+	}
+	if err := c.emit(stdout, develop.OpenSummary(res, c.dryRun)); err != nil {
+		return fail(stderr, "open", err)
 	}
 	return 0
 }

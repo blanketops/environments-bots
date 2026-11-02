@@ -44,6 +44,8 @@ func TestRunUsage(t *testing.T) {
 		{"unknown", []string{"bogus"}, 2, "", "unknown command"},
 		{"sync bad flag", []string{"sync", "-nope"}, 2, "", ""},
 		{"sync extra arg", []string{"sync", "x"}, 2, "", "unexpected argument"},
+		{"open in usage", []string{"help"}, 0, "open", ""},
+		{"open no branch", []string{"open", "-repo", "o/r", "-dry-run"}, 2, "", "no branch"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var out, errb bytes.Buffer
@@ -121,5 +123,48 @@ func TestRunSyncDryRunNeedsNoToken(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "Would open") {
 		t.Fatalf("stdout = %q", out.String())
+	}
+}
+
+func TestRunOpen(t *testing.T) {
+	s := githubtest.New("blanketops", "environments-bots", "t0ken")
+	s.Branches["develop"] = "devhead00"
+	s.Branches["feat/x"] = "branchhd0"
+	s.RefCommits["feat/x"] = []githubtest.Commit{{SHA: "c0ffee1", Message: "feat: add x"}}
+	defer s.Close()
+
+	var out, errb bytes.Buffer
+	code := run(
+		[]string{"open", "-repo", "blanketops/environments-bots", "-api-url", s.URL, "-branch", "feat/x"},
+		&out, &errb, env(map[string]string{"GH_TOKEN": "t0ken"}),
+	)
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, errb.String())
+	}
+	if len(s.Pulls) != 1 || len(s.Issues) != 1 {
+		t.Fatalf("want one pull request and one issue, got pulls=%d issues=%d", len(s.Pulls), len(s.Issues))
+	}
+	if !strings.Contains(out.String(), "Opened") {
+		t.Fatalf("stdout = %q", out.String())
+	}
+}
+
+func TestRunOpenBranchFromEnv(t *testing.T) {
+	s := githubtest.New("blanketops", "environments-bots", "")
+	s.Branches["develop"] = "devhead00"
+	s.Branches["fix/y"] = "branchhd1"
+	s.RefCommits["fix/y"] = []githubtest.Commit{{SHA: "c0ffee2", Message: "fix: y"}}
+	defer s.Close()
+
+	var out, errb bytes.Buffer
+	code := run(
+		[]string{"open", "-repo", "blanketops/environments-bots", "-api-url", s.URL, "-dry-run"},
+		&out, &errb, env(map[string]string{"GITHUB_REF_NAME": "fix/y"}),
+	)
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, errb.String())
+	}
+	if !strings.Contains(out.String(), "fix/y") {
+		t.Fatalf("stdout = %q, want the branch from $GITHUB_REF_NAME", out.String())
 	}
 }

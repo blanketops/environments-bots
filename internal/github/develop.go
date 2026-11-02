@@ -18,6 +18,7 @@ package github
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 )
 
@@ -50,4 +51,15 @@ func (c *Client) Merge(ctx context.Context, base, head, message string) (string,
 // DeleteBranch deletes a branch. IsNotFound(err) when it is already gone.
 func (c *Client) DeleteBranch(ctx context.Context, branch string) error {
 	return c.do(ctx, http.MethodDelete, c.repoPath("/git/refs/heads/"+refPath(branch)), nil, nil)
+}
+
+// AddLabels adds labels to an issue or pull request (pull requests are
+// labelled through the issues API). Adding a label that is already there is a
+// no-op, so this is safe to repeat.
+func (c *Client) AddLabels(ctx context.Context, number int, labels []string) error {
+	if len(labels) == 0 {
+		return nil
+	}
+	in := map[string][]string{"labels": labels}
+	return c.do(ctx, http.MethodPost, c.repoPath(fmt.Sprintf("/issues/%d/labels", number)), in, nil)
 }
