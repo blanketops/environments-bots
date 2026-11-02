@@ -1,3 +1,19 @@
+## [0.0.4] - 2026-11-02
+
+### 🚀 Features
+
+- *(test-helper)* Add layer filter for sync and report
+- *(developer)* Sync develop with main
+
+### 📚 Documentation
+
+- Auto-generate code documentation [skip ci] (#24)
+- Auto-generate code documentation [skip ci] (#25)
+
+### ⚙️ Miscellaneous Tasks
+
+- Sync develop with main after release/v0.0.3
+- Sync develop with main
 ## [0.0.3] - 2026-10-23
 
 ### 🐛 Bug Fixes
@@ -15,6 +31,7 @@
 ### ⚙️ Miscellaneous Tasks
 
 - Sync develop with main after release/v0.0.2
+- *(release)* Update changelog for v0.0.3 (#18)
 ## [0.0.2] - 2026-10-23
 
 ### 🚀 Features
