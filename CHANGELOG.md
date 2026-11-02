@@ -1,3 +1,17 @@
+## [0.0.5] - 2026-11-02
+
+### 🚀 Features
+
+- *(developer)* Open a pull request and tracking issue for a branch
+
+### 📚 Documentation
+
+- Tidy the README, add the developer bot and per-bot icons
+- Auto-generate code documentation [skip ci] (#32)
+
+### ⚙️ Miscellaneous Tasks
+
+- Sync develop with main after release/v0.0.4
 ## [0.0.4] - 2026-11-02
 
 ### 🚀 Features
@@ -14,6 +28,7 @@
 
 - Sync develop with main after release/v0.0.3
 - Sync develop with main
+- *(release)* Update changelog for v0.0.4 (#26)
 ## [0.0.3] - 2026-10-23
 
 ### 🐛 Bug Fixes
