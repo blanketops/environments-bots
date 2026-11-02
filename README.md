@@ -1,4 +1,4 @@
-# environments-bots
+# BlanketOps Environments BOts
 
 Bots and helpers that automate the BlanketOps Environments repositories: the
 bookkeeping around tests, releases and the project board that workflows
@@ -6,8 +6,9 @@ otherwise do in inline shell.
 
 | Part | What it does | Status |
 |---|---|---|
-| `test-helper` | Keeps one GitHub issue per test file under `tests/` and posts every test run's results to it, with a link to the run | `sync` and `report` work; not released yet |
-| `releaser` | Drives every release through its Release issue on the project board: plans the next release when develop has unreleased changes, cuts the release branch and its pull request, and attaches the tag and the GitHub release after a person finalizes | `plan`, `cut`, `prepare`, `verify` and `complete` work and run in this repository's release workflows; not released yet |
+| <img src="docs/assets/bots/test-helper.png" width="18" align="top"> `test-helper` | Keeps one GitHub issue per test file under `tests/` and posts every test run's results to it, with a link to the run | `sync` and `report` work, with a `-layer` filter; released |
+| <img src="docs/assets/bots/releaser.png" width="18" align="top"> `releaser` | Drives every release through its Release issue on the project board: plans the next release when develop has unreleased changes, cuts the release branch and its pull request, and attaches the tag and the GitHub release after a person finalizes | `plan`, `cut`, `prepare`, `verify` and `complete` work, run in this repository's release workflows, and drive releases across the family through a composite action; released |
+| <img src="docs/assets/bots/developer.png" width="18" align="top"> `developer` | Keeps `develop` in step with `main`: opens one pull request merging `main` into `develop` whenever `main` is ahead | `sync` works; new in v0.0.4 |
 
 ## Why
 
@@ -19,7 +20,8 @@ workflow step, and run as the BlanketOps-Environments GitHub App.
 
 ## Status
 
-Nothing is released yet. CI and the release workflows are in place.
+Released on the family's single-digit version scheme (see Releases below); CI
+and the release workflows are in place.
 
 | Workflow | Runs on | What it does |
 |---|---|---|
@@ -33,7 +35,7 @@ Nothing is released yet. CI and the release workflows are in place.
 Jobs run on the repository's self-hosted runner pool (`runs-on:
 self-hosted`).
 
-## test-helper
+## <img src="docs/assets/bots/test-helper.png" width="24" align="top"> test-helper
 
 A test file is a `*_test.go` file under `tests/` (`tests/data` excluded) that
 declares a Go test function (`func TestXxx(t *testing.T)`) or a top-level
@@ -66,7 +68,7 @@ Everything taken from test files and test output (names, messages) is
 written inside code spans or code blocks, so it cannot mention users or break
 the markdown around it.
 
-## releaser
+## <img src="docs/assets/bots/releaser.png" width="24" align="top"> releaser
 
 A Release issue is titled `Release: vX.Y.Z` and labelled `release`. On the
 project board it has Status `Release` until the release is published, then
@@ -139,6 +141,23 @@ zenith-runner-toolchain image has it). This repository's own workflows build
 the releaser from source instead, so a change is exercised before it is
 released.
 
+## <img src="docs/assets/bots/developer.png" width="24" align="top"> developer
+
+Keeps a repository's `develop` branch in step with `main`. `developer sync`
+opens one pull request merging `main` into `develop` whenever `main` is ahead,
+so changes that land on `main` (releases, fixes, Dependabot updates) reach
+`develop` without the manual branch-and-merge chore.
+
+| Command | What it does |
+|---|---|
+| `developer sync [-base develop] [-from main]` | When `main` is ahead, branches off `develop`, merges `main` in with a server-side (GitHub-signed) merge commit, and opens the pull request into `develop`. Idempotent: a `develop` already level with `main`, or an open sync pull request, does nothing. A merge conflict is reported, not forced, for a person to resolve. `-dry-run` reads only. |
+
+The token comes from `GH_TOKEN` (or `GITHUB_TOKEN`); in a workflow, mint one
+for the BlanketOps Environments Developer App, which has Contents, Pull
+requests, Checks, Issues and organization Projects read and write, and Actions
+read. Commit subjects shown in the pull request body are written inside code
+spans.
+
 ## Security
 
 The tools act on GitHub through an App installation token passed in by the
@@ -155,11 +174,12 @@ as described in [SECURITY.md](SECURITY.md).
 | `golangci-lint run` | Lint (the runner image ships the version CI uses) |
 | `go run ./cmd/test-helper sync -dry-run -root <checkout> -repo <owner/name>` | Run test-helper from source against a checkout, read-only |
 | `go run ./cmd/releaser cut -dry-run -repo <owner/name>` | Show what the next release would be and whether it can be cut, read-only |
+| `go run ./cmd/developer sync -dry-run -repo <owner/name>` | Show whether `develop` is behind `main` and what the sync pull request would bring, read-only |
 
 ## Releases
 
 Each tag `vX.Y.Z` publishes `<tool>-linux-amd64` and `<tool>-linux-arm64`
-for every tool (`test-helper`, `releaser`), a `SHA256SUMS` file, and a
+for every tool (`test-helper`, `releaser`, `developer`), a `SHA256SUMS` file, and a
 Sigstore bundle per file. Verify a download:
 
 ```
