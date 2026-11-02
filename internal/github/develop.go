@@ -63,3 +63,39 @@ func (c *Client) AddLabels(ctx context.Context, number int, labels []string) err
 	in := map[string][]string{"labels": labels}
 	return c.do(ctx, http.MethodPost, c.repoPath(fmt.Sprintf("/issues/%d/labels", number)), in, nil)
 }
+
+// PullDetail is one pull request's detail (GET /pulls/{number}): its head and
+// base branches and, once merged, whether it merged and the merge commit.
+type PullDetail struct {
+	Number         int
+	Title          string
+	State          string
+	HTMLURL        string
+	Head           string
+	Base           string
+	Merged         bool
+	MergeCommitSHA string
+}
+
+// GetPull returns a pull request's detail.
+func (c *Client) GetPull(ctx context.Context, number int) (PullDetail, error) {
+	var out struct {
+		Number         int    `json:"number"`
+		Title          string `json:"title"`
+		State          string `json:"state"`
+		HTMLURL        string `json:"html_url"`
+		Merged         bool   `json:"merged"`
+		MergeCommitSHA string `json:"merge_commit_sha"`
+		Head           struct {
+			Ref string `json:"ref"`
+		} `json:"head"`
+		Base struct {
+			Ref string `json:"ref"`
+		} `json:"base"`
+	}
+	err := c.do(ctx, http.MethodGet, c.repoPath(fmt.Sprintf("/pulls/%d", number)), nil, &out)
+	return PullDetail{
+		Number: out.Number, Title: out.Title, State: out.State, HTMLURL: out.HTMLURL,
+		Head: out.Head.Ref, Base: out.Base.Ref, Merged: out.Merged, MergeCommitSHA: out.MergeCommitSHA,
+	}, err
+}
