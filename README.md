@@ -1,4 +1,4 @@
-# environments-bots
+# BlanketOps Environments BOts
 
 Bots and helpers that automate the BlanketOps Environments repositories: the
 bookkeeping around tests, releases and the project board that workflows
