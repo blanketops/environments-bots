@@ -53,6 +53,7 @@ type Pull struct {
 	Base, Head string
 	Merged     bool
 	Body       string
+	Labels     []string
 }
 
 // Branch returns the commit of a stored branch, or "".

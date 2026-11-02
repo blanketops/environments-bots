@@ -18,6 +18,7 @@ package githubtest
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -58,6 +59,23 @@ func (s *Server) handleDevelop(w http.ResponseWriter, r *http.Request, rest stri
 		}
 		delete(s.Branches, name)
 		w.WriteHeader(http.StatusNoContent)
+	case r.Method == http.MethodPost && strings.HasPrefix(rest, "/issues/") && strings.HasSuffix(rest, "/labels"):
+		n, _ := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(rest, "/issues/"), "/labels"))
+		var in struct{ Labels []string }
+		_ = json.NewDecoder(r.Body).Decode(&in)
+		if is := s.issueByNumber(n); is != nil {
+			is.Labels = append(is.Labels, in.Labels...)
+			write(w, http.StatusOK, []map[string]string{})
+			return true
+		}
+		for i := range s.Pulls {
+			if s.Pulls[i].Number == n {
+				s.Pulls[i].Labels = append(s.Pulls[i].Labels, in.Labels...)
+				write(w, http.StatusOK, []map[string]string{})
+				return true
+			}
+		}
+		write(w, http.StatusNotFound, map[string]string{"message": "Not Found"})
 	default:
 		return false
 	}
