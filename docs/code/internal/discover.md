@@ -85,6 +85,9 @@ type Options struct {
     // Exclude lists subtrees, relative to the root, whose files are never
     // test files. Default ["tests/data"].
     Exclude []string
+    // Layer limits discovery to files whose first directory under TestsDir
+    // matches this value (e.g. "benchmark" or "profile"). Empty means all.
+    Layer string
 }
 ```
 

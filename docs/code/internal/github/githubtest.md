@@ -12,6 +12,7 @@ Package githubtest is an in\-memory fake of the GitHub API endpoints the github 
 
 - [type Commit](<#Commit>)
 - [type Issue](<#Issue>)
+- [type Merge](<#Merge>)
 - [type Milestone](<#Milestone>)
 - [type ProjectItem](<#ProjectItem>)
 - [type Pull](<#Pull>)
@@ -57,6 +58,17 @@ type Issue struct {
     // Author is the login of whoever opened it; issues created through
     // the API get the server's Login.
     Author string
+}
+```
+
+<a name="Merge"></a>
+## type Merge
+
+Merge is a stored server\-side merge \(POST /merges\).
+
+```go
+type Merge struct {
+    Base, Head, Message string
 }
 ```
 
@@ -152,6 +164,7 @@ type Server struct {
     Milestones []*Milestone
     Pulls      []Pull
     Branches   map[string]string // branch -> commit
+    Merges     []Merge           // server-side merges, in order
     // Login is the author of issues created through the API (the App\'s bot).
     Login string
     // contains filtered or unexported fields
