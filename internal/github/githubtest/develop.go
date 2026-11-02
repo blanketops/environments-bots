@@ -75,6 +75,29 @@ func (s *Server) handleDevelop(w http.ResponseWriter, r *http.Request, rest stri
 				return true
 			}
 		}
+	case r.Method == http.MethodGet && strings.HasPrefix(rest, "/pulls/"):
+		n, err := strconv.Atoi(strings.TrimPrefix(rest, "/pulls/"))
+		if err != nil {
+			return false // not a bare /pulls/<number>; let other handlers try
+		}
+		for i := range s.Pulls {
+			if s.Pulls[i].Number == n {
+				p := s.Pulls[i]
+				sha := ""
+				if p.Merged {
+					sha = "mergecommitsha"
+				}
+				write(w, http.StatusOK, map[string]any{
+					"number": p.Number, "title": p.Title, "state": p.State,
+					"html_url":         "https://github.example/" + s.Owner + "/" + s.Repo + "/pull/" + strconv.Itoa(p.Number),
+					"merged":           p.Merged,
+					"merge_commit_sha": sha,
+					"head":             map[string]string{"ref": p.Head},
+					"base":             map[string]string{"ref": p.Base},
+				})
+				return true
+			}
+		}
 		write(w, http.StatusNotFound, map[string]string{"message": "Not Found"})
 	default:
 		return false
