@@ -139,17 +139,17 @@ func Discover(root string, opts Options) ([]File, error) {
 				return filepath.SkipDir
 			}
 			// If Layer is set, skip directories that don't match at the first level under TestsDir.
-					if opts.Layer != "" {
-						// Check if this is a direct child of testsRoot.
-						relFromTests, _ := filepath.Rel(testsRoot, p)
-						relFromTests = filepath.ToSlash(relFromTests)
-						if relFromTests != "." && !strings.HasPrefix(relFromTests, "../") {
-							firstDir := strings.Split(relFromTests, "/")[0]
-							if firstDir != opts.Layer {
-								return filepath.SkipDir
-							}
-						}
+			if opts.Layer != "" {
+				// Check if this is a direct child of testsRoot.
+				relFromTests, _ := filepath.Rel(testsRoot, p)
+				relFromTests = filepath.ToSlash(relFromTests)
+				if relFromTests != "." && !strings.HasPrefix(relFromTests, "../") {
+					firstDir := strings.Split(relFromTests, "/")[0]
+					if firstDir != opts.Layer {
+						return filepath.SkipDir
 					}
+				}
+			}
 			return nil
 		}
 		if !strings.HasSuffix(rel, "_test.go") || excluded(rel, opts.Exclude) {
