@@ -120,8 +120,8 @@ func (c *common) client(getenv func(string) string) (*github.Client, error) {
 	return github.New(c.apiURL, token, c.repo)
 }
 
-func (c *common) discover() ([]discover.File, error) {
-	return discover.Discover(c.root, discover.Options{})
+func (c *common) discover(layer string) ([]discover.File, error) {
+	return discover.Discover(c.root, discover.Options{Layer: layer})
 }
 
 // emit prints the summary and appends it to the summary file, if any.
@@ -174,6 +174,7 @@ func runSync(args []string, stdout, stderr io.Writer, getenv func(string) string
 	project := fs.String("project", "", "add new issues to this organization project, as org/number (e.g. blanketops/1)")
 	status := fs.String("status", "Test", "Status of new issues on the project")
 	source := fs.String("source", "", "shown in new issues as where they were opened from (e.g. the pull request URL)")
+	layer := fs.String("layer", "", "limit sync to test files under this layer (e.g. benchmark, profile)")
 	if code, ok := parse(fs, args, stderr); !ok {
 		return code
 	}
@@ -191,7 +192,7 @@ func runSync(args []string, stdout, stderr io.Writer, getenv func(string) string
 	if err != nil {
 		return fail(stderr, "sync", err)
 	}
-	if opts.Files, err = c.discover(); err != nil {
+	if opts.Files, err = c.discover(*layer); err != nil {
 		return fail(stderr, "sync", err)
 	}
 	ctx, cancel := commandContext()
@@ -231,6 +232,7 @@ func runReport(args []string, stdout, stderr io.Writer, getenv func(string) stri
 	var goJSON, ginkgoJSON files
 	fs.Var(&goJSON, "go-json", "`go test -json` output file (repeatable)")
 	fs.Var(&ginkgoJSON, "ginkgo-json", "Ginkgo JSON report file (repeatable)")
+	layer := fs.String("layer", "", "limit report to test files under this layer (e.g. benchmark, profile)")
 	var info tracker.RunInfo
 	fs.StringVar(&info.URL, "run-url", runURL(getenv), "link to the run (default from $GITHUB_SERVER_URL, $GITHUB_REPOSITORY, $GITHUB_RUN_ID)")
 	fs.StringVar(&info.Name, "run-name", runName(getenv), "label of the run link (default \"$GITHUB_WORKFLOW #$GITHUB_RUN_NUMBER\")")
@@ -248,7 +250,7 @@ func runReport(args []string, stdout, stderr io.Writer, getenv func(string) stri
 	if err != nil {
 		return fail(stderr, "report", err)
 	}
-	found, err := c.discover()
+	found, err := c.discover(*layer)
 	if err != nil {
 		return fail(stderr, "report", err)
 	}
