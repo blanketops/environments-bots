@@ -86,6 +86,7 @@ type Server struct {
 	Milestones []*Milestone
 	Pulls      []Pull
 	Branches   map[string]string // branch -> commit
+	Merges     []Merge           // server-side merges, in order
 	// Login is the author of issues created through the API (the App\'s bot).
 	Login string
 }
@@ -215,6 +216,7 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&in)
 		s.Labels[in.Name] = true
 		write(w, http.StatusCreated, map[string]string{"name": in.Name})
+	case s.handleDevelop(w, r, rest):
 	case s.handleRelease(w, r, rest):
 	default:
 		write(w, http.StatusNotFound, map[string]string{"message": "Not Found"})
