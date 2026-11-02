@@ -11,6 +11,7 @@ Package github is the small part of the GitHub REST and GraphQL APIs that test\-
 ## Index
 
 - [Constants](<#constants>)
+- [func IsConflict\(err error\) bool](<#IsConflict>)
 - [func IsNotFound\(err error\) bool](<#IsNotFound>)
 - [type APIError](<#APIError>)
   - [func \(e \*APIError\) Error\(\) string](<#APIError.Error>)
@@ -25,6 +26,7 @@ Package github is the small part of the GitHub REST and GraphQL APIs that test\-
   - [func \(c \*Client\) CreateBranch\(ctx context.Context, branch, sha string\) error](<#Client.CreateBranch>)
   - [func \(c \*Client\) CreateIssue\(ctx context.Context, title, body string, labels \[\]string\) \(Issue, error\)](<#Client.CreateIssue>)
   - [func \(c \*Client\) CreatePull\(ctx context.Context, title, head, base, body string\) \(Pull, error\)](<#Client.CreatePull>)
+  - [func \(c \*Client\) DeleteBranch\(ctx context.Context, branch string\) error](<#Client.DeleteBranch>)
   - [func \(c \*Client\) EnsureLabel\(ctx context.Context, name, color, description string\) error](<#Client.EnsureLabel>)
   - [func \(c \*Client\) FindProject\(ctx context.Context, org string, number int\) \(Project, error\)](<#Client.FindProject>)
   - [func \(c \*Client\) ListCommits\(ctx context.Context, ref string\) \(\[\]Commit, error\)](<#Client.ListCommits>)
@@ -32,6 +34,7 @@ Package github is the small part of the GitHub REST and GraphQL APIs that test\-
   - [func \(c \*Client\) ListMilestones\(ctx context.Context\) \(\[\]Milestone, error\)](<#Client.ListMilestones>)
   - [func \(c \*Client\) ListPulls\(ctx context.Context, state, base, head string\) \(\[\]Pull, error\)](<#Client.ListPulls>)
   - [func \(c \*Client\) ListTags\(ctx context.Context\) \(\[\]string, error\)](<#Client.ListTags>)
+  - [func \(c \*Client\) Merge\(ctx context.Context, base, head, message string\) \(string, error\)](<#Client.Merge>)
   - [func \(c \*Client\) OpenMilestoneItems\(ctx context.Context, number int\) \(\[\]Issue, error\)](<#Client.OpenMilestoneItems>)
   - [func \(c \*Client\) ReleaseByTag\(ctx context.Context, tag string\) \(Release, error\)](<#Client.ReleaseByTag>)
   - [func \(c \*Client\) RenameIssue\(ctx context.Context, number int, title string\) error](<#Client.RenameIssue>)
@@ -51,6 +54,15 @@ Package github is the small part of the GitHub REST and GraphQL APIs that test\-
 ```go
 const DefaultBaseURL = "https://api.github.com"
 ```
+
+<a name="IsConflict"></a>
+## func IsConflict
+
+```go
+func IsConflict(err error) bool
+```
+
+IsConflict reports whether err is an HTTP 409, which a merge returns when the two branches cannot be merged without resolving a conflict.
 
 <a name="IsNotFound"></a>
 ## func IsNotFound
@@ -188,6 +200,15 @@ func (c *Client) CreatePull(ctx context.Context, title, head, base, body string)
 
 CreatePull opens a pull request from head into base.
 
+<a name="Client.DeleteBranch"></a>
+### func \(\*Client\) DeleteBranch
+
+```go
+func (c *Client) DeleteBranch(ctx context.Context, branch string) error
+```
+
+DeleteBranch deletes a branch. IsNotFound\(err\) when it is already gone.
+
 <a name="Client.EnsureLabel"></a>
 ### func \(\*Client\) EnsureLabel
 
@@ -250,6 +271,15 @@ func (c *Client) ListTags(ctx context.Context) ([]string, error)
 ```
 
 ListTags returns the names of every tag.
+
+<a name="Client.Merge"></a>
+### func \(\*Client\) Merge
+
+```go
+func (c *Client) Merge(ctx context.Context, base, head, message string) (string, error)
+```
+
+Merge merges head into base with a server\-side merge commit and returns the merge commit's SHA. GitHub signs the commit, so it satisfies the branch's required\-signatures rule without a ruleset bypass. The SHA is empty when base already contains head \(HTTP 204, nothing to merge\). IsConflict\(err\) reports a merge conflict \(HTTP 409\); the caller resolves it, as a bot cannot.
 
 <a name="Client.OpenMilestoneItems"></a>
 ### func \(\*Client\) OpenMilestoneItems
