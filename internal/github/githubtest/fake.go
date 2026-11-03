@@ -88,6 +88,7 @@ type Server struct {
 	Branches        map[string]string // branch -> commit
 	Merges          []Merge           // server-side merges, in order
 	CommitsOnBranch []CommitOnBranch  // GraphQL createCommitOnBranch, in order
+	WorkflowRuns    []WorkflowRun     // Actions runs, newest first
 	// Login is the author of issues created through the API (the App\'s bot).
 	Login string
 }
@@ -226,6 +227,7 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 		s.Labels[in.Name] = true
 		write(w, http.StatusCreated, map[string]string{"name": in.Name})
 	case s.handleDevelop(w, r, rest):
+	case s.handleClean(w, r, rest):
 	case s.handleRelease(w, r, rest):
 	default:
 		write(w, http.StatusNotFound, map[string]string{"message": "Not Found"})
