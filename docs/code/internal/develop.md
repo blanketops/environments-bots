@@ -14,12 +14,17 @@ Sync opens one pull request that merges main into develop whenever main is ahead
 
 - [Constants](<#constants>)
 - [func OpenSummary\(res OpenResult, dryRun bool\) string](<#OpenSummary>)
+- [func ResolveSummary\(res ResolveResult, dryRun bool\) string](<#ResolveSummary>)
 - [func SyncSummary\(res SyncResult, dryRun bool\) string](<#SyncSummary>)
 - [type API](<#API>)
 - [type OpenAPI](<#OpenAPI>)
 - [type OpenOptions](<#OpenOptions>)
 - [type OpenResult](<#OpenResult>)
   - [func Open\(ctx context.Context, api OpenAPI, opts OpenOptions\) \(OpenResult, error\)](<#Open>)
+- [type ResolveAPI](<#ResolveAPI>)
+- [type ResolveOptions](<#ResolveOptions>)
+- [type ResolveResult](<#ResolveResult>)
+  - [func Resolve\(ctx context.Context, api ResolveAPI, opts ResolveOptions\) \(ResolveResult, error\)](<#Resolve>)
 - [type SyncOptions](<#SyncOptions>)
 - [type SyncResult](<#SyncResult>)
   - [func Sync\(ctx context.Context, api API, opts SyncOptions\) \(SyncResult, error\)](<#Sync>)
@@ -50,6 +55,15 @@ func OpenSummary(res OpenResult, dryRun bool) string
 ```
 
 OpenSummary is the markdown summary of an Open.
+
+<a name="ResolveSummary"></a>
+## func ResolveSummary
+
+```go
+func ResolveSummary(res ResolveResult, dryRun bool) string
+```
+
+ResolveSummary is the markdown summary of a Resolve.
 
 <a name="SyncSummary"></a>
 ## func SyncSummary
@@ -140,6 +154,66 @@ func Open(ctx context.Context, api OpenAPI, opts OpenOptions) (OpenResult, error
 ```
 
 Open opens a pull request for Branch into Base on its first push \(when no pull request from it is open yet\) and a tracking issue mapped one\-to\-one to that pull request, both labelled with pr\-tracking and the branch's Conventional Commit type. It is idempotent — a branch that already has an open pull request, or a long\-lived branch, does nothing — and reuses an open tracking issue a closed pull request left behind.
+
+<a name="ResolveAPI"></a>
+## type ResolveAPI
+
+ResolveAPI is the part of the GitHub client Resolve uses.
+
+```go
+type ResolveAPI interface {
+    GetPull(ctx context.Context, number int) (github.PullDetail, error)
+    ListIssues(ctx context.Context, label string) ([]github.Issue, error)
+    Comment(ctx context.Context, number int, body string) error
+    CloseIssue(ctx context.Context, number int) error
+}
+```
+
+<a name="ResolveOptions"></a>
+## type ResolveOptions
+
+ResolveOptions configures Resolve.
+
+```go
+type ResolveOptions struct {
+    // Pull is the pull request whose tracking issue to close.
+    Pull int
+    // DryRun only reports what it would do.
+    DryRun bool
+}
+```
+
+<a name="ResolveResult"></a>
+## type ResolveResult
+
+ResolveResult is the outcome of a Resolve.
+
+```go
+type ResolveResult struct {
+    Pull   int
+    Branch string
+    // NotMerged is set when the pull request was closed without merging; the
+    // tracking issue is left open.
+    NotMerged bool
+    // Issue is the tracking issue found for the branch.
+    Issue *github.Issue
+    // NotFound is set when the branch has no tracking issue.
+    NotFound bool
+    // AlreadyClosed is set when the tracking issue was already closed.
+    AlreadyClosed bool
+    // Closed is set when Resolve closed the tracking issue.
+    Closed bool
+}
+```
+
+<a name="Resolve"></a>
+### func Resolve
+
+```go
+func Resolve(ctx context.Context, api ResolveAPI, opts ResolveOptions) (ResolveResult, error)
+```
+
+Resolve closes the one\-to\-one tracking issue of a merged pull request \(the issue developer open created for the pull request's head branch\), commenting the merge on it. It acts only when the pull request merged — a pull request closed without merging leaves the issue open — and is idempotent: an issue already closed, or a branch with none, does nothing.
 
 <a name="SyncOptions"></a>
 ## type SyncOptions
