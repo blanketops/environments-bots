@@ -15,6 +15,7 @@ developer open    open a pull request and a tracking issue for a branch
                   on its first push
 developer resolve close a branch's tracking issue when its pull request
                   merges
+developer tidy    commit gofmt and go mod tidy fixes to a branch
 ```
 
 GitHub is reached with the token in GH\_TOKEN \(or GITHUB\_TOKEN\), normally an installation token of the BlanketOps Environments Developer App.

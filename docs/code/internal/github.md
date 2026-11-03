@@ -25,9 +25,11 @@ Package github is the small part of the GitHub REST and GraphQL APIs that test\-
   - [func \(c \*Client\) Comment\(ctx context.Context, number int, body string\) error](<#Client.Comment>)
   - [func \(c \*Client\) Compare\(ctx context.Context, base, head string\) \(\[\]Commit, error\)](<#Client.Compare>)
   - [func \(c \*Client\) CreateBranch\(ctx context.Context, branch, sha string\) error](<#Client.CreateBranch>)
+  - [func \(c \*Client\) CreateCommitOnBranch\(ctx context.Context, branch, headline, body, expectedHead string, additions \[\]FileAddition, deletions \[\]string\) \(string, error\)](<#Client.CreateCommitOnBranch>)
   - [func \(c \*Client\) CreateIssue\(ctx context.Context, title, body string, labels \[\]string\) \(Issue, error\)](<#Client.CreateIssue>)
   - [func \(c \*Client\) CreatePull\(ctx context.Context, title, head, base, body string\) \(Pull, error\)](<#Client.CreatePull>)
   - [func \(c \*Client\) DeleteBranch\(ctx context.Context, branch string\) error](<#Client.DeleteBranch>)
+  - [func \(c \*Client\) DeleteWorkflowRun\(ctx context.Context, id int64\) error](<#Client.DeleteWorkflowRun>)
   - [func \(c \*Client\) EnsureLabel\(ctx context.Context, name, color, description string\) error](<#Client.EnsureLabel>)
   - [func \(c \*Client\) FindProject\(ctx context.Context, org string, number int\) \(Project, error\)](<#Client.FindProject>)
   - [func \(c \*Client\) GetPull\(ctx context.Context, number int\) \(PullDetail, error\)](<#Client.GetPull>)
@@ -36,18 +38,22 @@ Package github is the small part of the GitHub REST and GraphQL APIs that test\-
   - [func \(c \*Client\) ListMilestones\(ctx context.Context\) \(\[\]Milestone, error\)](<#Client.ListMilestones>)
   - [func \(c \*Client\) ListPulls\(ctx context.Context, state, base, head string\) \(\[\]Pull, error\)](<#Client.ListPulls>)
   - [func \(c \*Client\) ListTags\(ctx context.Context\) \(\[\]string, error\)](<#Client.ListTags>)
+  - [func \(c \*Client\) ListWorkflowRuns\(ctx context.Context\) \(\[\]WorkflowRun, error\)](<#Client.ListWorkflowRuns>)
   - [func \(c \*Client\) Merge\(ctx context.Context, base, head, message string\) \(string, error\)](<#Client.Merge>)
   - [func \(c \*Client\) OpenMilestoneItems\(ctx context.Context, number int\) \(\[\]Issue, error\)](<#Client.OpenMilestoneItems>)
   - [func \(c \*Client\) ReleaseByTag\(ctx context.Context, tag string\) \(Release, error\)](<#Client.ReleaseByTag>)
   - [func \(c \*Client\) RenameIssue\(ctx context.Context, number int, title string\) error](<#Client.RenameIssue>)
   - [func \(c \*Client\) TagSHA\(ctx context.Context, tag string\) \(string, error\)](<#Client.TagSHA>)
 - [type Commit](<#Commit>)
+- [type FileAddition](<#FileAddition>)
 - [type Issue](<#Issue>)
 - [type Milestone](<#Milestone>)
 - [type Project](<#Project>)
 - [type Pull](<#Pull>)
 - [type PullDetail](<#PullDetail>)
 - [type Release](<#Release>)
+- [type WorkflowRun](<#WorkflowRun>)
+  - [func \(r WorkflowRun\) Completed\(\) bool](<#WorkflowRun.Completed>)
 
 
 ## Constants
@@ -194,6 +200,15 @@ func (c *Client) CreateBranch(ctx context.Context, branch, sha string) error
 
 CreateBranch creates branch at commit sha. No commit is made, so the branch carries only commits that already exist.
 
+<a name="Client.CreateCommitOnBranch"></a>
+### func \(\*Client\) CreateCommitOnBranch
+
+```go
+func (c *Client) CreateCommitOnBranch(ctx context.Context, branch, headline, body, expectedHead string, additions []FileAddition, deletions []string) (string, error)
+```
+
+CreateCommitOnBranch makes a commit on branch with the given file additions and deletions through the GraphQL createCommitOnBranch mutation, and returns the new commit's OID. A commit made this way with an App installation token is signed by GitHub and shows as verified — a git commit in a workflow is not, so a branch requiring verified signatures refuses it. expectedHead is the commit the branch must still point at, so a racing update fails the mutation instead of being clobbered.
+
 <a name="Client.CreateIssue"></a>
 ### func \(\*Client\) CreateIssue
 
@@ -220,6 +235,15 @@ func (c *Client) DeleteBranch(ctx context.Context, branch string) error
 ```
 
 DeleteBranch deletes a branch. IsNotFound\(err\) when it is already gone.
+
+<a name="Client.DeleteWorkflowRun"></a>
+### func \(\*Client\) DeleteWorkflowRun
+
+```go
+func (c *Client) DeleteWorkflowRun(ctx context.Context, id int64) error
+```
+
+DeleteWorkflowRun deletes a workflow run. IsNotFound\(err\) when it is already gone.
 
 <a name="Client.EnsureLabel"></a>
 ### func \(\*Client\) EnsureLabel
@@ -293,6 +317,15 @@ func (c *Client) ListTags(ctx context.Context) ([]string, error)
 
 ListTags returns the names of every tag.
 
+<a name="Client.ListWorkflowRuns"></a>
+### func \(\*Client\) ListWorkflowRuns
+
+```go
+func (c *Client) ListWorkflowRuns(ctx context.Context) ([]WorkflowRun, error)
+```
+
+ListWorkflowRuns returns every workflow run of the repository, newest first, following the Link header's pages.
+
 <a name="Client.Merge"></a>
 ### func \(\*Client\) Merge
 
@@ -348,6 +381,18 @@ type Commit struct {
     SHA     string
     Message string
     Parents int
+}
+```
+
+<a name="FileAddition"></a>
+## type FileAddition
+
+FileAddition is a file written by CreateCommitOnBranch; Contents is base64\-encoded.
+
+```go
+type FileAddition struct {
+    Path     string
+    Contents string
 }
 ```
 
@@ -449,5 +494,32 @@ type Release struct {
     Prerelease bool   `json:"prerelease"`
 }
 ```
+
+<a name="WorkflowRun"></a>
+## type WorkflowRun
+
+WorkflowRun is the part of an Actions workflow run cleaner needs.
+
+```go
+type WorkflowRun struct {
+    ID         int64  `json:"id"`
+    WorkflowID int64  `json:"workflow_id"`
+    Name       string `json:"name"`
+    Status     string `json:"status"` // queued, in_progress, completed
+    Conclusion string `json:"conclusion"`
+    CreatedAt  string `json:"created_at"`
+    HeadBranch string `json:"head_branch"`
+    Event      string `json:"event"`
+}
+```
+
+<a name="WorkflowRun.Completed"></a>
+### func \(WorkflowRun\) Completed
+
+```go
+func (r WorkflowRun) Completed() bool
+```
+
+Completed reports whether the run has finished \(and so is safe to delete\).
 
 Generated by [gomarkdoc](<https://github.com/princjef/gomarkdoc>)
