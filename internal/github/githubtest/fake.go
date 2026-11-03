@@ -79,14 +79,16 @@ type Server struct {
 	PerPage int
 
 	// Release data; see release.go.
-	Tags       []Tag
-	Compares   map[string][]Commit // "base...head" -> commits, oldest first
-	RefCommits map[string][]Commit // ref -> commits, newest first
-	Releases   map[string]Release  // tag -> published release
-	Milestones []*Milestone
-	Pulls      []Pull
-	Branches   map[string]string // branch -> commit
-	Merges     []Merge           // server-side merges, in order
+	Tags            []Tag
+	Compares        map[string][]Commit // "base...head" -> commits, oldest first
+	RefCommits      map[string][]Commit // ref -> commits, newest first
+	Releases        map[string]Release  // tag -> published release
+	Milestones      []*Milestone
+	Pulls           []Pull
+	Branches        map[string]string // branch -> commit
+	Merges          []Merge           // server-side merges, in order
+	CommitsOnBranch []CommitOnBranch  // GraphQL createCommitOnBranch, in order
+	WorkflowRuns    []WorkflowRun     // Actions runs, newest first
 	// Login is the author of issues created through the API (the App\'s bot).
 	Login string
 }
@@ -203,6 +205,14 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		// Pull requests take issue comments too.
+		for i := range s.Pulls {
+			if s.Pulls[i].Number == n {
+				s.Pulls[i].Comments = append(s.Pulls[i].Comments, in.Body)
+				write(w, http.StatusCreated, map[string]any{"id": len(s.Pulls[i].Comments)})
+				return
+			}
+		}
 		write(w, http.StatusNotFound, map[string]string{"message": "Not Found"})
 	case r.Method == http.MethodGet && strings.HasPrefix(rest, "/labels/"):
 		name, _ := url.PathUnescape(strings.TrimPrefix(r.URL.EscapedPath(), "/repos/"+s.Owner+"/"+s.Repo+"/labels/"))
@@ -217,6 +227,7 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 		s.Labels[in.Name] = true
 		write(w, http.StatusCreated, map[string]string{"name": in.Name})
 	case s.handleDevelop(w, r, rest):
+	case s.handleClean(w, r, rest):
 	case s.handleRelease(w, r, rest):
 	default:
 		write(w, http.StatusNotFound, map[string]string{"message": "Not Found"})
@@ -297,6 +308,39 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 			s.Items[n-1].Option, _ = in.Variables["option"].(string)
 		}
 		write(w, http.StatusOK, map[string]any{"data": map[string]any{"updateProjectV2ItemFieldValue": map[string]any{"projectV2Item": map[string]string{"id": item}}}})
+	case strings.Contains(in.Query, "createCommitOnBranch"):
+		input, _ := in.Variables["input"].(map[string]any)
+		commit := CommitOnBranch{}
+		if br, ok := input["branch"].(map[string]any); ok {
+			commit.Branch, _ = br["branchName"].(string)
+		}
+		if msg, ok := input["message"].(map[string]any); ok {
+			commit.Headline, _ = msg["headline"].(string)
+		}
+		if fc, ok := input["fileChanges"].(map[string]any); ok {
+			if adds, ok := fc["additions"].([]any); ok {
+				for _, a := range adds {
+					if m, ok := a.(map[string]any); ok {
+						p, _ := m["path"].(string)
+						commit.Additions = append(commit.Additions, p)
+					}
+				}
+			}
+			if dels, ok := fc["deletions"].([]any); ok {
+				for _, d := range dels {
+					if m, ok := d.(map[string]any); ok {
+						p, _ := m["path"].(string)
+						commit.Deletions = append(commit.Deletions, p)
+					}
+				}
+			}
+		}
+		s.CommitsOnBranch = append(s.CommitsOnBranch, commit)
+		oid := fmt.Sprintf("commit%d", len(s.CommitsOnBranch))
+		if commit.Branch != "" {
+			s.Branches[commit.Branch] = oid
+		}
+		write(w, http.StatusOK, map[string]any{"data": map[string]any{"createCommitOnBranch": map[string]any{"commit": map[string]string{"oid": oid}}}})
 	default:
 		write(w, http.StatusOK, map[string]any{"errors": []map[string]string{{"message": "unknown query"}}})
 	}

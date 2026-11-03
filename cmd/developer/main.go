@@ -21,6 +21,7 @@ limitations under the License.
 //	                  on its first push
 //	developer resolve close a branch's tracking issue when its pull request
 //	                  merges
+//	developer tidy    commit gofmt and go mod tidy fixes to a branch
 //
 // GitHub is reached with the token in GH_TOKEN (or GITHUB_TOKEN), normally
 // an installation token of the BlanketOps Environments Developer App.
@@ -54,6 +55,7 @@ Commands:
   sync      Open a pull request merging main into develop when main is ahead
   open      Open a pull request and a tracking issue for a branch on its first push
   resolve   Close a branch's tracking issue when its pull request merges
+  tidy      Commit gofmt and go mod tidy fixes to a branch
   version   Print the version
   help      Print this help
 
@@ -85,6 +87,8 @@ func run(args []string, stdout, stderr io.Writer, getenv func(string) string) in
 		return runOpen(args[1:], stdout, stderr, getenv)
 	case "resolve":
 		return runResolve(args[1:], stdout, stderr, getenv)
+	case "tidy":
+		return runTidy(args[1:], stdout, stderr, getenv)
 	default:
 		_, _ = fmt.Fprintf(stderr, "developer: unknown command %q\n\n%s", args[0], usage)
 		return 2

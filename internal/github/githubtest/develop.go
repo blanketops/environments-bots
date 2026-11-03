@@ -27,6 +27,14 @@ type Merge struct {
 	Base, Head, Message string
 }
 
+// CommitOnBranch is a stored GraphQL createCommitOnBranch commit.
+type CommitOnBranch struct {
+	Branch    string
+	Headline  string
+	Additions []string
+	Deletions []string
+}
+
 // handleDevelop serves the endpoints developer uses beyond the release
 // ones: a server-side merge and deleting a branch. It reports whether it
 // handled the request. rest is the path after /repos/owner/repo.
