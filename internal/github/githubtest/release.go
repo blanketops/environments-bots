@@ -54,6 +54,7 @@ type Pull struct {
 	Merged     bool
 	Body       string
 	Labels     []string
+	Comments   []string
 }
 
 // Branch returns the commit of a stored branch, or "".
@@ -61,6 +62,18 @@ func (s *Server) Branch(name string) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.Branches[name]
+}
+
+// PullComments returns the comments posted on the pull request numbered n.
+func (s *Server) PullComments(n int) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.Pulls {
+		if s.Pulls[i].Number == n {
+			return s.Pulls[i].Comments
+		}
+	}
+	return nil
 }
 
 // AddMilestone stores an open milestone and returns its number.

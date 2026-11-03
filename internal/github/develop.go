@@ -99,3 +99,48 @@ func (c *Client) GetPull(ctx context.Context, number int) (PullDetail, error) {
 		Head: out.Head.Ref, Base: out.Base.Ref, Merged: out.Merged, MergeCommitSHA: out.MergeCommitSHA,
 	}, err
 }
+
+// FileAddition is a file written by CreateCommitOnBranch; Contents is
+// base64-encoded.
+type FileAddition struct {
+	Path     string
+	Contents string
+}
+
+// CreateCommitOnBranch makes a commit on branch with the given file additions
+// and deletions through the GraphQL createCommitOnBranch mutation, and returns
+// the new commit's OID. A commit made this way with an App installation token
+// is signed by GitHub and shows as verified — a git commit in a workflow is
+// not, so a branch requiring verified signatures refuses it. expectedHead is
+// the commit the branch must still point at, so a racing update fails the
+// mutation instead of being clobbered.
+func (c *Client) CreateCommitOnBranch(ctx context.Context, branch, headline, body, expectedHead string, additions []FileAddition, deletions []string) (string, error) {
+	const q = `mutation($input: CreateCommitOnBranchInput!) {
+  createCommitOnBranch(input: $input) { commit { oid } }
+}`
+	adds := make([]map[string]string, len(additions))
+	for i, a := range additions {
+		adds[i] = map[string]string{"path": a.Path, "contents": a.Contents}
+	}
+	dels := make([]map[string]string, len(deletions))
+	for i, d := range deletions {
+		dels[i] = map[string]string{"path": d}
+	}
+	input := map[string]any{
+		"branch":          map[string]string{"repositoryNameWithOwner": c.Owner + "/" + c.Repo, "branchName": branch},
+		"message":         map[string]string{"headline": headline, "body": body},
+		"expectedHeadOid": expectedHead,
+		"fileChanges":     map[string]any{"additions": adds, "deletions": dels},
+	}
+	var out struct {
+		CreateCommitOnBranch struct {
+			Commit struct {
+				OID string `json:"oid"`
+			} `json:"commit"`
+		} `json:"createCommitOnBranch"`
+	}
+	if err := c.graphql(ctx, q, map[string]any{"input": input}, &out); err != nil {
+		return "", err
+	}
+	return out.CreateCommitOnBranch.Commit.OID, nil
+}
