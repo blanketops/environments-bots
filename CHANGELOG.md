@@ -1,3 +1,16 @@
+## [0.0.6] - 2026-11-03
+
+### 🚀 Features
+
+- *(developer)* Close a branch's tracking issue when its PR merges
+
+### 📚 Documentation
+
+- Auto-generate code documentation [skip ci] (#38)
+
+### ⚙️ Miscellaneous Tasks
+
+- Sync develop with main after release/v0.0.5
 ## [0.0.5] - 2026-11-02
 
 ### 🚀 Features
@@ -12,6 +25,7 @@
 ### ⚙️ Miscellaneous Tasks
 
 - Sync develop with main after release/v0.0.4
+- *(release)* Update changelog for v0.0.5 (#33)
 ## [0.0.4] - 2026-11-02
 
 ### 🚀 Features
