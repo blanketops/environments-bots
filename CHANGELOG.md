@@ -1,8 +1,23 @@
+## [0.0.7] - 2026-11-03
+
+### 🚀 Features
+
+- *(cleaner)* Stub the environments-cleaner bot with run pruning
+
+### 📚 Documentation
+
+- Document the developer bot's full command set and the cleaner bot
+- Auto-generate code documentation [skip ci] (#44)
+
+### ⚙️ Miscellaneous Tasks
+
+- Sync develop with main after release/v0.0.6
 ## [0.0.6] - 2026-11-03
 
 ### 🚀 Features
 
 - *(developer)* Close a branch's tracking issue when its PR merges
+- *(developer)* Commit gofmt and go mod tidy fixes to a branch
 
 ### 📚 Documentation
 
@@ -11,6 +26,7 @@
 ### ⚙️ Miscellaneous Tasks
 
 - Sync develop with main after release/v0.0.5
+- *(release)* Update changelog for v0.0.6 (#39)
 ## [0.0.5] - 2026-11-02
 
 ### 🚀 Features
