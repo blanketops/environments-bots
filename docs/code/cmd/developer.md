@@ -13,6 +13,8 @@ developer sync    open a pull request merging main into develop when
                   main is ahead
 developer open    open a pull request and a tracking issue for a branch
                   on its first push
+developer resolve close a branch's tracking issue when its pull request
+                  merges
 ```
 
 GitHub is reached with the token in GH\_TOKEN \(or GITHUB\_TOKEN\), normally an installation token of the BlanketOps Environments Developer App.

@@ -30,6 +30,7 @@ Package github is the small part of the GitHub REST and GraphQL APIs that test\-
   - [func \(c \*Client\) DeleteBranch\(ctx context.Context, branch string\) error](<#Client.DeleteBranch>)
   - [func \(c \*Client\) EnsureLabel\(ctx context.Context, name, color, description string\) error](<#Client.EnsureLabel>)
   - [func \(c \*Client\) FindProject\(ctx context.Context, org string, number int\) \(Project, error\)](<#Client.FindProject>)
+  - [func \(c \*Client\) GetPull\(ctx context.Context, number int\) \(PullDetail, error\)](<#Client.GetPull>)
   - [func \(c \*Client\) ListCommits\(ctx context.Context, ref string\) \(\[\]Commit, error\)](<#Client.ListCommits>)
   - [func \(c \*Client\) ListIssues\(ctx context.Context, label string\) \(\[\]Issue, error\)](<#Client.ListIssues>)
   - [func \(c \*Client\) ListMilestones\(ctx context.Context\) \(\[\]Milestone, error\)](<#Client.ListMilestones>)
@@ -45,6 +46,7 @@ Package github is the small part of the GitHub REST and GraphQL APIs that test\-
 - [type Milestone](<#Milestone>)
 - [type Project](<#Project>)
 - [type Pull](<#Pull>)
+- [type PullDetail](<#PullDetail>)
 - [type Release](<#Release>)
 
 
@@ -237,6 +239,15 @@ func (c *Client) FindProject(ctx context.Context, org string, number int) (Proje
 
 FindProject looks up project number of the organization org.
 
+<a name="Client.GetPull"></a>
+### func \(\*Client\) GetPull
+
+```go
+func (c *Client) GetPull(ctx context.Context, number int) (PullDetail, error)
+```
+
+GetPull returns a pull request's detail.
+
 <a name="Client.ListCommits"></a>
 ### func \(\*Client\) ListCommits
 
@@ -403,6 +414,24 @@ type Pull struct {
     State    string  `json:"state"`
     HTMLURL  string  `json:"html_url"`
     MergedAt *string `json:"merged_at"`
+}
+```
+
+<a name="PullDetail"></a>
+## type PullDetail
+
+PullDetail is one pull request's detail \(GET /pulls/\{number\}\): its head and base branches and, once merged, whether it merged and the merge commit.
+
+```go
+type PullDetail struct {
+    Number         int
+    Title          string
+    State          string
+    HTMLURL        string
+    Head           string
+    Base           string
+    Merged         bool
+    MergeCommitSHA string
 }
 ```
 
