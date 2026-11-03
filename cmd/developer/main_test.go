@@ -22,6 +22,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/blanketops/environments-bots/internal/develop"
 	"github.com/blanketops/environments-bots/internal/github/githubtest"
 )
 
@@ -166,5 +167,46 @@ func TestRunOpenBranchFromEnv(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "fix/y") {
 		t.Fatalf("stdout = %q, want the branch from $GITHUB_REF_NAME", out.String())
+	}
+}
+
+func TestRunResolve(t *testing.T) {
+	s := githubtest.New("blanketops", "environments-bots", "t0ken")
+	s.Pulls = append(s.Pulls, githubtest.Pull{Number: 9, Title: "feat: z", State: "closed", Base: "develop", Head: "feat/z", Merged: true})
+	s.AddIssue(githubtest.Issue{Title: "[pr] feat/z", State: "open", Labels: []string{develop.TrackLabel}})
+	defer s.Close()
+
+	var out, errb bytes.Buffer
+	code := run(
+		[]string{"resolve", "-repo", "blanketops/environments-bots", "-api-url", s.URL, "-pull", "9"},
+		&out, &errb, env(map[string]string{"GH_TOKEN": "t0ken"}),
+	)
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, errb.String())
+	}
+	if is := s.Issue("[pr] feat/z"); is == nil || is.State != "closed" {
+		t.Fatalf("issue not closed: %+v", is)
+	}
+	if !strings.Contains(out.String(), "Closed") {
+		t.Fatalf("stdout = %q", out.String())
+	}
+}
+
+func TestRunResolvePullFromRef(t *testing.T) {
+	s := githubtest.New("blanketops", "environments-bots", "")
+	s.Pulls = append(s.Pulls, githubtest.Pull{Number: 12, Title: "feat: q", State: "closed", Base: "develop", Head: "feat/q", Merged: true})
+	s.AddIssue(githubtest.Issue{Title: "[pr] feat/q", State: "open", Labels: []string{develop.TrackLabel}})
+	defer s.Close()
+
+	var out, errb bytes.Buffer
+	code := run(
+		[]string{"resolve", "-repo", "blanketops/environments-bots", "-api-url", s.URL, "-dry-run"},
+		&out, &errb, env(map[string]string{"GITHUB_REF": "refs/pull/12/merge"}),
+	)
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, errb.String())
+	}
+	if !strings.Contains(out.String(), "#12") {
+		t.Fatalf("stdout = %q, want pull 12 from $GITHUB_REF", out.String())
 	}
 }

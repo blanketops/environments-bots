@@ -19,6 +19,8 @@ limitations under the License.
 //	                  main is ahead
 //	developer open    open a pull request and a tracking issue for a branch
 //	                  on its first push
+//	developer resolve close a branch's tracking issue when its pull request
+//	                  merges
 //
 // GitHub is reached with the token in GH_TOKEN (or GITHUB_TOKEN), normally
 // an installation token of the BlanketOps Environments Developer App.
@@ -31,6 +33,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/blanketops/environments-bots/internal/develop"
@@ -49,6 +53,7 @@ Usage:
 Commands:
   sync      Open a pull request merging main into develop when main is ahead
   open      Open a pull request and a tracking issue for a branch on its first push
+  resolve   Close a branch's tracking issue when its pull request merges
   version   Print the version
   help      Print this help
 
@@ -78,6 +83,8 @@ func run(args []string, stdout, stderr io.Writer, getenv func(string) string) in
 		return runSync(args[1:], stdout, stderr, getenv)
 	case "open":
 		return runOpen(args[1:], stdout, stderr, getenv)
+	case "resolve":
+		return runResolve(args[1:], stdout, stderr, getenv)
 	default:
 		_, _ = fmt.Fprintf(stderr, "developer: unknown command %q\n\n%s", args[0], usage)
 		return 2
@@ -207,4 +214,45 @@ func runOpen(args []string, stdout, stderr io.Writer, getenv func(string) string
 		return fail(stderr, "open", err)
 	}
 	return 0
+}
+
+func runResolve(args []string, stdout, stderr io.Writer, getenv func(string) string) int {
+	fs := flag.NewFlagSet("resolve", flag.ContinueOnError)
+	var c common
+	c.register(fs, getenv)
+	pull := fs.Int("pull", pullFromRef(getenv("GITHUB_REF")), "the merged pull request number (default parsed from $GITHUB_REF)")
+	if code, ok := parse(fs, args, stderr); !ok {
+		return code
+	}
+	if *pull <= 0 {
+		_, _ = fmt.Fprintln(stderr, "developer resolve: no pull request: set -pull or run on a pull_request event")
+		return 2
+	}
+
+	api, err := c.client(getenv)
+	if err != nil {
+		return fail(stderr, "resolve", err)
+	}
+	ctx, cancel := commandContext()
+	defer cancel()
+	res, err := develop.Resolve(ctx, api, develop.ResolveOptions{Pull: *pull, DryRun: c.dryRun})
+	if err != nil {
+		return fail(stderr, "resolve", err)
+	}
+	if err := c.emit(stdout, develop.ResolveSummary(res, c.dryRun)); err != nil {
+		return fail(stderr, "resolve", err)
+	}
+	return 0
+}
+
+// pullFromRef parses the pull request number from a refs/pull/<n>/merge ref,
+// or returns 0.
+func pullFromRef(ref string) int {
+	rest, ok := strings.CutPrefix(ref, "refs/pull/")
+	if !ok {
+		return 0
+	}
+	num, _, _ := strings.Cut(rest, "/")
+	n, _ := strconv.Atoi(num)
+	return n
 }

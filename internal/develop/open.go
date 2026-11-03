@@ -208,8 +208,14 @@ func labelDesc(name string) string {
 	return "Conventional Commit type: " + name
 }
 
+// issueLister is the lookup capability openIssue needs, shared by open and
+// resolve.
+type issueLister interface {
+	ListIssues(ctx context.Context, label string) ([]github.Issue, error)
+}
+
 // openIssue returns the open tracking issue titled title, or nil.
-func openIssue(ctx context.Context, api OpenAPI, title string) (*github.Issue, error) {
+func openIssue(ctx context.Context, api issueLister, title string) (*github.Issue, error) {
 	issues, err := api.ListIssues(ctx, TrackLabel)
 	if err != nil {
 		return nil, fmt.Errorf("list tracking issues: %w", err)
