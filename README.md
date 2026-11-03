@@ -8,7 +8,8 @@ otherwise do in inline shell.
 |---|---|---|
 | <img src="docs/assets/bots/test-helper.png" width="18" align="top"> `test-helper` | Keeps one GitHub issue per test file under `tests/` and posts every test run's results to it, with a link to the run | `sync` and `report` work, with a `-layer` filter; released |
 | <img src="docs/assets/bots/releaser.png" width="18" align="top"> `releaser` | Drives every release through its Release issue on the project board: plans the next release when develop has unreleased changes, cuts the release branch and its pull request, and attaches the tag and the GitHub release after a person finalizes | `plan`, `cut`, `prepare`, `verify` and `complete` work, run in this repository's release workflows, and drive releases across the family through a composite action; released |
-| <img src="docs/assets/bots/developer.png" width="18" align="top"> `developer` | Keeps `develop` in step with `main`: opens one pull request merging `main` into `develop` whenever `main` is ahead | `sync` works; new in v0.0.4 |
+| <img src="docs/assets/bots/developer.png" width="18" align="top"> `developer` | PR and develop hygiene: syncs `develop` with `main`, opens a pull request and tracking issue on a branch's first push, closes that issue when the pull request merges, and commits gofmt / go mod tidy fixes | `sync`, `open`, `resolve` and `tidy` work; released |
+| <img src="docs/assets/bots/cleaner.png" width="18" align="top"> `cleaner` | Keeps the repository's Actions footprint small: prunes old workflow runs that otherwise fill the self-hosted runner node's disk | `runs` works; new |
 
 ## Why
 
@@ -143,20 +144,35 @@ released.
 
 ## <img src="docs/assets/bots/developer.png" width="24" align="top"> developer
 
-Keeps a repository's `develop` branch in step with `main`. `developer sync`
-opens one pull request merging `main` into `develop` whenever `main` is ahead,
-so changes that land on `main` (releases, fixes, Dependabot updates) reach
-`develop` without the manual branch-and-merge chore.
+Pull-request and `develop` hygiene for a repository. The branch a command acts
+on comes from `$GITHUB_REF_NAME` in a workflow; the base defaults to `develop`.
 
 | Command | What it does |
 |---|---|
-| `developer sync [-base develop] [-from main]` | When `main` is ahead, branches off `develop`, merges `main` in with a server-side (GitHub-signed) merge commit, and opens the pull request into `develop`. Idempotent: a `develop` already level with `main`, or an open sync pull request, does nothing. A merge conflict is reported, not forced, for a person to resolve. `-dry-run` reads only. |
+| `developer sync [-base develop] [-from main]` | When `main` is ahead, branches off `develop`, merges `main` in with a server-side (GitHub-signed) merge commit, and opens the pull request into `develop`. Idempotent: a `develop` already level with `main`, or an open sync pull request, does nothing. A merge conflict is reported, not forced. |
+| `developer open [-branch <b>] [-base develop]` | On a branch's first push (no open pull request yet), opens the pull request into `develop` and a one-to-one tracking issue, cross-linked, both labelled `pr-tracking` plus the branch's Conventional Commit type (`feat`, `fix`, …). Skips long-lived branches; reuses an open tracking issue a closed pull request left behind. |
+| `developer resolve -pull <n>` | When pull request `n` has merged, closes the tracking issue `open` created for its branch, commenting the merge commit. Acts only on merge; idempotent. `-pull` defaults from `$GITHUB_REF` (`refs/pull/<n>/merge`). |
+| `developer tidy [-branch <b>]` | Runs `go fmt ./...` and `go mod tidy` and commits the result to the branch as one GitHub-signed commit (via GraphQL `createCommitOnBranch`, so a signed-commit ruleset accepts it), then comments the fixes on the branch's open pull request. Does nothing when already tidy. |
+
+Every command takes `-dry-run` (read only). The token comes from `GH_TOKEN`
+(or `GITHUB_TOKEN`); in a workflow, mint one for the BlanketOps Environments
+Developer App, which has Contents, Pull requests, Checks, Issues and
+organization Projects read and write, and Actions read. Commit subjects and
+other untrusted text shown in comments are written inside code spans.
+
+## <img src="docs/assets/bots/cleaner.png" width="24" align="top"> cleaner
+
+Keeps a repository's GitHub Actions footprint small — the environments-cleaner
+bot. Its first task prunes old workflow runs, which otherwise fill the
+self-hosted runner node's disk.
+
+| Command | What it does |
+|---|---|
+| `cleaner runs [-keep N]` | Deletes completed workflow runs beyond the newest `N` (default 20) per workflow. Never deletes a run still queued or in progress; idempotent. `-dry-run` reads only. |
 
 The token comes from `GH_TOKEN` (or `GITHUB_TOKEN`); in a workflow, mint one
-for the BlanketOps Environments Developer App, which has Contents, Pull
-requests, Checks, Issues and organization Projects read and write, and Actions
-read. Commit subjects shown in the pull request body are written inside code
-spans.
+for the BlanketOps Environments Cleaner App, which needs Actions read and
+write.
 
 ## Security
 
@@ -175,6 +191,8 @@ as described in [SECURITY.md](SECURITY.md).
 | `go run ./cmd/test-helper sync -dry-run -root <checkout> -repo <owner/name>` | Run test-helper from source against a checkout, read-only |
 | `go run ./cmd/releaser cut -dry-run -repo <owner/name>` | Show what the next release would be and whether it can be cut, read-only |
 | `go run ./cmd/developer sync -dry-run -repo <owner/name>` | Show whether `develop` is behind `main` and what the sync pull request would bring, read-only |
+| `go run ./cmd/developer open -dry-run -repo <owner/name> -branch <b>` | Show the pull request and tracking issue it would open for a branch, read-only |
+| `go run ./cmd/cleaner runs -dry-run -repo <owner/name>` | Show which old workflow runs it would prune, read-only |
 
 ## Releases
 
