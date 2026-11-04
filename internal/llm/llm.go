@@ -92,7 +92,7 @@ func (c *OpenAICompat) Complete(ctx context.Context, system, user string) (strin
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var out struct {
 		Choices []struct {
 			Message struct {
