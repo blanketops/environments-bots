@@ -15,7 +15,10 @@ limitations under the License.
 
 package prreviewer
 
-import "testing"
+import (
+	"regexp"
+	"testing"
+)
 
 func TestMatchAddedReturnsNewFileLine(t *testing.T) {
 	patch := "@@ -1,2 +1,4 @@\n context\n+added one\n+run: echo ${{ github.event.pull_request.title }}\n context2\n"
@@ -43,6 +46,26 @@ func TestUntrustedPatternsFlagInjectionVectorsNotSafeFields(t *testing.T) {
 	safe := "-pull \"${{ github.event.pull_request.number }}\""
 	if matchAdded("@@ -0,0 +1 @@\n+"+safe+"\n", untrustedRes) != 0 {
 		t.Errorf("PR number should not be flagged: %q", safe)
+	}
+}
+
+func TestLeftoverAndTodoScannersFlagCommonIssues(t *testing.T) {
+	flagged := func(line string, res []*regexp.Regexp) bool {
+		return matchAdded("@@ -0,0 +1 @@\n+"+line+"\n", res) != 0
+	}
+	for _, line := range []string{`fmt.Println("debug")`, `panic("boom")`, `console.log(x)`} {
+		if !flagged(line, leftoverRes) {
+			t.Errorf("leftover scanner should flag: %q", line)
+		}
+	}
+	for _, line := range []string{`// TODO: fix this`, `x := 1 // FIXME later`, `# XXX hack`} {
+		if !flagged(line, todoRes) {
+			t.Errorf("todo scanner should flag: %q", line)
+		}
+	}
+	// Ordinary code is not flagged.
+	if flagged(`result := compute(input)`, leftoverRes) {
+		t.Error("leftover scanner flagged clean code")
 	}
 }
 

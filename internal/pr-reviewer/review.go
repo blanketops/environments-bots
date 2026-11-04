@@ -302,6 +302,20 @@ func reviewFile(f github.PullFile, prTemplate string, issueTemplates []string, a
 				Body: "Untrusted input is interpolated directly here. Pass it through an env var (quoted), never inline into a shell command or query.",
 			})
 		}
+		if isSourceFile(f.Filename) {
+			if line := matchAdded(f.Patch, leftoverRes); line > 0 {
+				comments = append(comments, FileComment{
+					Line: line,
+					Body: "Leftover debug print or a bare panic on this line? Drop stray prints, and prefer returning an error over panicking.",
+				})
+			}
+		}
+		if line := matchAdded(f.Patch, todoRes); line > 0 {
+			comments = append(comments, FileComment{
+				Line: line,
+				Body: "TODO/FIXME added here — open an issue to track it so it does not get lost.",
+			})
+		}
 	}
 
 	// Test coverage check: if source code changed, check for a matching test file
@@ -544,6 +558,25 @@ var untrustedPatterns = []string{
 
 // untrustedRes is the precompiled untrusted-input scanners.
 var untrustedRes = compileAll(untrustedPatterns)
+
+// leftoverPatterns match stray debug output and bare panics in source code.
+var leftoverPatterns = []string{
+	`\bfmt\.Print(ln|f)?\(`,
+	`\bconsole\.log\(`,
+	`\bpanic\(`,
+	`\bprintln!\(`,
+}
+
+// leftoverRes is the precompiled debug/panic scanners.
+var leftoverRes = compileAll(leftoverPatterns)
+
+// todoPatterns match TODO/FIXME markers added to the diff.
+var todoPatterns = []string{
+	`(?i)\b(TODO|FIXME|XXX|HACK)\b`,
+}
+
+// todoRes is the precompiled TODO/FIXME scanners.
+var todoRes = compileAll(todoPatterns)
 
 func compileAll(pats []string) []*regexp.Regexp {
 	res := make([]*regexp.Regexp, len(pats))
