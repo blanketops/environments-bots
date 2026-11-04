@@ -1,0 +1,84 @@
+# =============================================================================
+# clean.yml — Prune old workflow runs with the Cleaner bot
+#
+# Runs on a daily schedule (and on demand) to delete completed workflow runs
+# beyond the newest N per workflow, which otherwise fill the self-hosted
+# runner node's disk. The cleaner (cmd/cleaner) acts as the BlanketOps
+# Environments Cleaner App (Actions read and write). Like the other bots it is
+# built from the develop branch, so the workflow file can live on the default
+# branch while the bot logic stays current.
+#
+# NOTE: scheduled workflows only fire from the default branch, so this file
+# must be on the default branch to run periodically. workflow_dispatch runs it
+# on demand from any branch.
+#
+# Secrets/vars required:
+#   vars.CLEANER_CLIENT_ID, secrets.CLEANER_APP_PRIVATE_KEY — the Cleaner App
+# =============================================================================
+
+name: Clean
+
+on:
+  schedule:
+    - cron: "0 3 * * *" # 03:00 UTC daily
+  workflow_dispatch:
+    inputs:
+      keep:
+        description: "Newest runs to keep per workflow"
+        required: false
+        default: "20"
+      dry-run:
+        description: "Read only: show what would be deleted"
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: clean
+  cancel-in-progress: false
+
+jobs:
+  clean:
+    name: Clean
+    runs-on: self-hosted
+
+    steps:
+      - name: Generate Cleaner App token
+        id: cleaner-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CLEANER_CLIENT_ID }}
+          private-key: ${{ secrets.CLEANER_APP_PRIVATE_KEY }}
+          # owner/repositories omitted on purpose: schedule events carry no
+          # reliable repository in github.event, so the action defaults to the
+          # current repository, which is exactly what we want.
+
+      - name: Checkout develop
+        uses: actions/checkout@v7
+        with:
+          ref: develop
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Build cleaner
+        run: go build -o "${RUNNER_TEMP}/cleaner" ./cmd/cleaner
+
+      - name: Prune workflow runs
+        env:
+          GH_TOKEN: ${{ steps.cleaner-token.outputs.token }}
+          KEEP: ${{ github.event.inputs.keep || '20' }}
+          DRY_RUN: ${{ github.event.inputs.dry-run || 'false' }}
+        run: |
+          args=(runs -keep "${KEEP}")
+          if [ "${DRY_RUN}" = "true" ]; then
+            args+=(-dry-run)
+          fi
+          "${RUNNER_TEMP}/cleaner" "${args[@]}"
