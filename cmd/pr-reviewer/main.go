@@ -16,7 +16,7 @@ limitations under the License.
 // Command pr-reviewer reviews pull requests against the repository's pull
 // request template and issue templates, in the style of PR Agent.
 //
-//\tpr-reviewer review   review a pull request and post review comments
+// \tpr-reviewer review   review a pull request and post review comments
 //
 // GitHub is reached with the token in GH_TOKEN (or GITHUB_TOKEN), normally
 // an installation token of the BlanketOps Environments PR Reviewer App.
@@ -162,9 +162,9 @@ func runReview(args []string, stdout, stderr io.Writer, getenv func(string) stri
 	defer cancel()
 
 	res, err := prreviewer.Review(ctx, api, prreviewer.ReviewOptions{
-		Repo:    c.repo,
-		PR:      *pr,
-		DryRun:  c.dryRun,
+		Repo:   c.repo,
+		PR:     *pr,
+		DryRun: c.dryRun,
 	})
 	if err != nil {
 		return fail(stderr, "review", err)
