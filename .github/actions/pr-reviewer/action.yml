@@ -1,0 +1,82 @@
+# =============================================================================
+# pr-reviewer — run the BlanketOps PR reviewer as the PR Reviewer App
+#
+# Mints an installation token of the BlanketOps Environments PR Reviewer App
+# for the calling repository, builds the pr-reviewer binary of the
+# environments-bots release this action is used at (uses: ...@vX.Y.Z runs
+# pr-reviewer vX.Y.Z), and runs it to review a pull request.
+#
+#   - uses: blanketops/environments-bots/.github/actions/pr-reviewer@v0.0.1
+#     with:
+#       pr: ${{ github.event.pull_request.number }}
+#       app-id: ${{ secrets.PR_REVIEWER_APP_ID }}
+#       private-key: ${{ secrets.PR_REVIEWER_APP_PRIVATE_KEY }}
+#
+# cosign comes from the runner image (zenith-runner-toolchain).
+# =============================================================================
+
+name: pr-reviewer
+description: Run the BlanketOps PR reviewer as the PR Reviewer App
+inputs:
+  pr:
+    description: "Pull request number to review"
+    required: true
+  app-id:
+    description: "PR Reviewer App ID"
+    required: true
+  private-key:
+    description: "PR Reviewer App private key"
+    required: true
+  pr-reviewer-version:
+    description: "environments-bots release to run (default: the tag this action is used at)"
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: PR Reviewer App token
+      id: token
+      uses: actions/create-github-app-token@v3
+      with:
+        app-id: ${{ inputs.app-id }}
+        private-key: ${{ inputs.private-key }}
+        owner: ${{ github.repository_owner }}
+        repositories: ${{ github.event.repository.name }}
+
+    - name: Download and verify pr-reviewer
+      shell: bash
+      env:
+        PINNED: ${{ inputs.pr-reviewer-version }}
+        ACTION_REF: ${{ github.action_ref }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        VERSION=${PINNED:-$ACTION_REF}
+        if [ -z "$VERSION" ]; then
+          rest=${ACTION_PATH#*/environments-bots/}
+          VERSION=${rest%%/*}
+        fi
+        if ! [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "::error::pr-reviewer version '${VERSION}' is not a release tag: use the action at @vX.Y.Z or set pr-reviewer-version"
+          exit 1
+        fi
+        case "$(uname -m)" in
+          x86_64) arch=amd64 ;;
+          aarch64 | arm64) arch=arm64 ;;
+          *) echo "::error::unsupported architecture $(uname -m)"; exit 1 ;;
+        esac
+        dir="${RUNNER_TEMP}/pr-reviewer-${VERSION}"
+        mkdir -p "$dir"
+        base="https://github.com/blanketops/environments-bots/releases/download/${VERSION}"
+        curl -fsSL -o "${dir}/pr-reviewer" "${base}/pr-reviewer-linux-${arch}"
+        chmod +x "${dir}/pr-reviewer"
+        echo "PR_REVIEWER_BIN=${dir}/pr-reviewer" >> "$GITHUB_ENV"
+
+    - name: pr-reviewer review
+      shell: bash
+      env:
+        GH_TOKEN: ${{ steps.token.outputs.token }}
+        PR: ${{ inputs.pr }}
+      run: |
+        set -euo pipefail
+        "${PR_REVIEWER_BIN}" review -pr "${PR}"
