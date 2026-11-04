@@ -1,3 +1,23 @@
+## [0.1.0] - 2026-11-04
+
+### 🚀 Features
+
+- *(pr-reviewer)* Optional LLM review pass
+
+### 🐛 Bug Fixes
+
+- *(llm)* Check resp.Body.Close error (errcheck)
+- *(developer)* Auto-populate the tracking issue from the repo template
+
+### 📚 Documentation
+
+- Auto-generate code documentation [skip ci] (#83)
+
+### ⚙️ Miscellaneous Tasks
+
+- Sync develop with main after release/v0.0.9
+- *(pr-review)* Authenticate with client-id from a variable
+- *(clean)* Run the cleaner bot on a daily schedule
 ## [0.0.9] - 2026-11-04
 
 ### 🚀 Features
@@ -29,6 +49,7 @@
 
 - Sync develop with main after release/v0.0.8
 - *(developer)* Sanitize resolve-issue input
+- *(release)* Update changelog for v0.0.9 (#72)
 ## [0.0.8] - 2026-11-04
 
 ### 🐛 Bug Fixes
