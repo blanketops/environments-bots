@@ -120,7 +120,7 @@ OpenAPI is the part of the GitHub client Open uses.
 ```go
 type OpenAPI interface {
     ListPulls(ctx context.Context, state, base, head string) ([]github.Pull, error)
-    ListCommits(ctx context.Context, ref string) ([]github.Commit, error)
+    Compare(ctx context.Context, base, head string) ([]github.Commit, error)
     CreatePull(ctx context.Context, title, head, base, body string) (github.Pull, error)
     EnsureLabel(ctx context.Context, name, color, description string) error
     ListIssues(ctx context.Context, label string) ([]github.Issue, error)
