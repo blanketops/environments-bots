@@ -71,6 +71,7 @@ func (c *Client) AddLabels(ctx context.Context, number int, labels []string) err
 type PullDetail struct {
 	Number         int
 	Title          string
+	Body           string
 	State          string
 	HTMLURL        string
 	Head           string
@@ -84,6 +85,7 @@ func (c *Client) GetPull(ctx context.Context, number int) (PullDetail, error) {
 	var out struct {
 		Number         int    `json:"number"`
 		Title          string `json:"title"`
+		Body           string `json:"body"`
 		State          string `json:"state"`
 		HTMLURL        string `json:"html_url"`
 		Merged         bool   `json:"merged"`
@@ -97,7 +99,7 @@ func (c *Client) GetPull(ctx context.Context, number int) (PullDetail, error) {
 	}
 	err := c.do(ctx, http.MethodGet, c.repoPath(fmt.Sprintf("/pulls/%d", number)), nil, &out)
 	return PullDetail{
-		Number: out.Number, Title: out.Title, State: out.State, HTMLURL: out.HTMLURL,
+		Number: out.Number, Title: out.Title, Body: out.Body, State: out.State, HTMLURL: out.HTMLURL,
 		Head: out.Head.Ref, Base: out.Base.Ref, Merged: out.Merged, MergeCommitSHA: out.MergeCommitSHA,
 	}, err
 }
@@ -173,10 +175,25 @@ type Review struct {
 	HTMLURL string `json:"html_url"`
 }
 
+// ReviewComment is an inline comment on a line of a changed file.
+type ReviewComment struct {
+	Path string
+	Line int
+	Body string
+}
+
 // CreateReview posts a review on a pull request. event is one of
-// APPROVE, REQUEST_CHANGES, or COMMENT.
-func (c *Client) CreateReview(ctx context.Context, number int, body, event string) (Review, error) {
+// APPROVE, REQUEST_CHANGES, or COMMENT. comments, when non-empty, are posted
+// as inline comments on the right (new-file) side of the diff.
+func (c *Client) CreateReview(ctx context.Context, number int, body, event string, comments []ReviewComment) (Review, error) {
 	in := map[string]any{"body": body, "event": event}
+	if len(comments) > 0 {
+		cs := make([]map[string]any, 0, len(comments))
+		for _, c := range comments {
+			cs = append(cs, map[string]any{"path": c.Path, "line": c.Line, "side": "RIGHT", "body": c.Body})
+		}
+		in["comments"] = cs
+	}
 	var out Review
 	err := c.do(ctx, http.MethodPost, c.repoPath(fmt.Sprintf("/pulls/%d/reviews", number)), in, &out)
 	return out, err
