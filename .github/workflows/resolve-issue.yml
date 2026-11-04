@@ -49,4 +49,5 @@ jobs:
       - name: Resolve
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
-        run: go run ./cmd/developer resolve -pull "${{ github.event.pull_request.number }}"
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: go run ./cmd/developer resolve -pull "$PR_NUMBER"
