@@ -173,6 +173,34 @@ func TestOpenNoTypeLabelForPlainBranch(t *testing.T) {
 	_ = s
 }
 
+func TestOpenUsesRepoTemplates(t *testing.T) {
+	s, api := openServer(t, "feat/widgets", "feat: add widgets")
+	s.Files[".github/PULL_REQUEST_TEMPLATE.md"] = "## What\n\nTEMPLATE-PR-MARKER\n"
+	s.Files[".github/ISSUE_TEMPLATE.md"] = "## Summary\n\nTEMPLATE-ISSUE-MARKER\n"
+	res, err := develop.Open(context.Background(), api, develop.OpenOptions{Branch: "feat/widgets"})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if res.Pull == nil || res.Issue == nil {
+		t.Fatalf("want a pull request and an issue, got %+v", res)
+	}
+	// The pull request uses the repo's PR template and keeps the tracking footer.
+	if !strings.Contains(s.Pulls[0].Body, "TEMPLATE-PR-MARKER") {
+		t.Fatalf("pull body does not use the PR template: %q", s.Pulls[0].Body)
+	}
+	if !strings.Contains(s.Pulls[0].Body, "Tracks #") {
+		t.Fatalf("pull body lost the tracking footer: %q", s.Pulls[0].Body)
+	}
+	// The tracking issue uses the repo's issue template and keeps the table.
+	is := s.Issue("[pr] feat/widgets")
+	if is == nil || !strings.Contains(is.Body, "TEMPLATE-ISSUE-MARKER") {
+		t.Fatalf("issue body does not use the issue template: %+v", is)
+	}
+	if !strings.Contains(is.Body, "Branch") {
+		t.Fatalf("issue body lost the tracking table: %q", is.Body)
+	}
+}
+
 func TestOpenSkipsWhenNoCommitsAhead(t *testing.T) {
 	s, api := openServer(t, "feat/empty", "feat: nothing")
 	// The branch has no commits ahead of develop: GitHub would 422 a pull
