@@ -33,7 +33,7 @@ func openServer(t *testing.T, branch, commitSubject string) (*githubtest.Server,
 	s.Login = "blanketops-environments-developer[bot]"
 	s.Branches["develop"] = "devhead00"
 	s.Branches[branch] = "branchhd0"
-	s.RefCommits[branch] = []githubtest.Commit{{SHA: "c0ffee1", Message: commitSubject}}
+	s.Compares["develop..."+branch] = []githubtest.Commit{{SHA: "c0ffee1", Message: commitSubject}}
 	t.Cleanup(s.Close)
 	api, err := github.New(s.URL, token, "blanketops/environments-bots")
 	if err != nil {
@@ -171,6 +171,23 @@ func TestOpenNoTypeLabelForPlainBranch(t *testing.T) {
 		t.Fatalf("labels = %v, want only %s", res.Labels, develop.TrackLabel)
 	}
 	_ = s
+}
+
+func TestOpenSkipsWhenNoCommitsAhead(t *testing.T) {
+	s, api := openServer(t, "feat/empty", "feat: nothing")
+	// The branch has no commits ahead of develop: GitHub would 422 a pull
+	// request, so Open skips it without creating a tracking issue.
+	s.Compares["develop...feat/empty"] = []githubtest.Commit{}
+	res, err := develop.Open(context.Background(), api, develop.OpenOptions{Branch: "feat/empty"})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if res.Skipped == "" {
+		t.Fatalf("want skipped, got %+v", res)
+	}
+	if res.Pull != nil || res.Issue != nil || len(s.Pulls) != 0 || len(s.Issues) != 0 {
+		t.Fatalf("opened something: pulls=%d issues=%d res=%+v", len(s.Pulls), len(s.Issues), res)
+	}
 }
 
 func TestOpenNoBranch(t *testing.T) {

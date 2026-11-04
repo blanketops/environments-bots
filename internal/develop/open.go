@@ -46,7 +46,7 @@ var conventionalTypes = map[string]bool{
 // OpenAPI is the part of the GitHub client Open uses.
 type OpenAPI interface {
 	ListPulls(ctx context.Context, state, base, head string) ([]github.Pull, error)
-	ListCommits(ctx context.Context, ref string) ([]github.Commit, error)
+	Compare(ctx context.Context, base, head string) ([]github.Commit, error)
 	CreatePull(ctx context.Context, title, head, base, body string) (github.Pull, error)
 	EnsureLabel(ctx context.Context, name, color, description string) error
 	ListIssues(ctx context.Context, label string) ([]github.Issue, error)
@@ -115,14 +115,23 @@ func Open(ctx context.Context, api OpenAPI, opts OpenOptions) (OpenResult, error
 		return res, nil
 	}
 
-	// The pull request title is the branch's latest commit subject.
-	title := branch
-	commits, err := api.ListCommits(ctx, branch)
+	// Nothing to open when the branch is at or behind base: GitHub rejects a
+	// pull request with no commits between them (HTTP 422). Check before
+	// creating the tracking issue so a no-op push leaves nothing behind.
+	ahead, err := api.Compare(ctx, base, branch)
 	if err != nil {
-		return res, fmt.Errorf("read %s: %w", branch, err)
+		return res, fmt.Errorf("compare %s...%s: %w", base, branch, err)
 	}
-	if len(commits) > 0 && subject(commits[0].Message) != "" {
-		title = subject(commits[0].Message)
+	if len(ahead) == 0 {
+		res.Skipped = "at or behind " + base
+		return res, nil
+	}
+
+	// The pull request title is the branch's newest commit subject (Compare
+	// returns commits oldest first).
+	title := branch
+	if s := subject(ahead[len(ahead)-1].Message); s != "" {
+		title = s
 	}
 	res.Title = title
 	res.Labels = branchLabels(branch)

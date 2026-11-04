@@ -131,7 +131,7 @@ func TestRunOpen(t *testing.T) {
 	s := githubtest.New("blanketops", "environments-bots", "t0ken")
 	s.Branches["develop"] = "devhead00"
 	s.Branches["feat/x"] = "branchhd0"
-	s.RefCommits["feat/x"] = []githubtest.Commit{{SHA: "c0ffee1", Message: "feat: add x"}}
+	s.Compares["develop...feat/x"] = []githubtest.Commit{{SHA: "c0ffee1", Message: "feat: add x"}}
 	defer s.Close()
 
 	var out, errb bytes.Buffer
@@ -154,7 +154,7 @@ func TestRunOpenBranchFromEnv(t *testing.T) {
 	s := githubtest.New("blanketops", "environments-bots", "")
 	s.Branches["develop"] = "devhead00"
 	s.Branches["fix/y"] = "branchhd1"
-	s.RefCommits["fix/y"] = []githubtest.Commit{{SHA: "c0ffee2", Message: "fix: y"}}
+	s.Compares["develop...fix/y"] = []githubtest.Commit{{SHA: "c0ffee2", Message: "fix: y"}}
 	defer s.Close()
 
 	var out, errb bytes.Buffer
