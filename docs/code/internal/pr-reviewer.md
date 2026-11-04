@@ -116,6 +116,9 @@ type ReviewOptions struct {
     PR  int
     // DryRun only reads: nothing is posted or labelled.
     DryRun bool
+    // LLM, when set, adds an advisory model review to the comment. nil keeps
+    // the review fully deterministic.
+    LLM llm.Client
 }
 ```
 
