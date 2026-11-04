@@ -110,11 +110,11 @@ func TestReviewPostsCommentAndLabels(t *testing.T) {
 func TestReviewSecretDetection(t *testing.T) {
 	s := api(t)
 	s.Pulls = append(s.Pulls, githubtest.Pull{
-		Number:  3,
-		Title:   "fix: resolve secrets bug",
-		State:   "open",
-		Base:    "develop",
-		Head:    "fix/secrets",
+		Number: 3,
+		Title:  "fix: resolve secrets bug",
+		State:  "open",
+		Base:   "develop",
+		Head:   "fix/secrets",
 	})
 	s.PullFiles[3] = []github.PullFile{
 		{Filename: "pkg/secrets/git/build/build.go", Status: "modified", Additions: 5, Deletions: 1,
@@ -144,11 +144,11 @@ func TestReviewSecretDetection(t *testing.T) {
 func TestReviewChecklist(t *testing.T) {
 	s := api(t)
 	s.Pulls = append(s.Pulls, githubtest.Pull{
-		Number:  5,
-		Title:   "docs: update readme",
-		State:   "open",
-		Base:    "develop",
-		Head:    "docs/readme",
+		Number: 5,
+		Title:  "docs: update readme",
+		State:  "open",
+		Base:   "develop",
+		Head:   "docs/readme",
 	})
 	s.PullFiles[5] = []github.PullFile{
 		{Filename: "README.md", Status: "modified", Additions: 3, Deletions: 1},

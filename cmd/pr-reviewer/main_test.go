@@ -39,9 +39,9 @@ func runCmd(t *testing.T, e env, args ...string) (code int, stdout, stderr strin
 
 func TestUsage(t *testing.T) {
 	tests := []struct {
-		name          string
-		args          []string
-		code          int
+		name               string
+		args               []string
+		code               int
 		stdout, stderrPart string
 	}{
 		{"no command", nil, 2, "", "Usage:"},
@@ -89,12 +89,12 @@ func TestReviewDryRun(t *testing.T) {
 
 	summary := filepath.Join(t.TempDir(), "summary.md")
 	e := env{
-		"GH_TOKEN":             "tok",
-		"GITHUB_REPOSITORY":    "blanketops/environments",
-		"GITHUB_API_URL":       srv.URL,
-		"GITHUB_STEP_SUMMARY":  summary,
-		"GITHUB_SERVER_URL":    "https://github.com",
-		"GITHUB_RUN_ID":        "7",
+		"GH_TOKEN":            "tok",
+		"GITHUB_REPOSITORY":   "blanketops/environments",
+		"GITHUB_API_URL":      srv.URL,
+		"GITHUB_STEP_SUMMARY": summary,
+		"GITHUB_SERVER_URL":   "https://github.com",
+		"GITHUB_RUN_ID":       "7",
 	}
 
 	code, stdout, stderr := runCmd(t, e, "review", "-pr", "4", "-repo", "blanketops/environments", "-api-url", srv.URL, "-summary", summary)

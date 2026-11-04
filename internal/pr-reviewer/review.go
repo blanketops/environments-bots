@@ -81,23 +81,23 @@ type ReviewResult struct {
 
 // FileReview is the review of one changed file.
 type FileReview struct {
-	Path     string
-	Status   string // added, modified, removed, renamed
+	Path      string
+	Status    string // added, modified, removed, renamed
 	Additions int
 	Deletions int
-	Comments []FileComment
+	Comments  []FileComment
 }
 
 // FileComment is a comment on a specific line or hunk of a file.
 type FileComment struct {
-	Line   int    // line in the new file (0 = file-level comment)
-	Body   string
+	Line int // line in the new file (0 = file-level comment)
+	Body string
 }
 
 // ChecklistItem is one checklist item from the PR template.
 type ChecklistItem struct {
-	Text  string
-	Done  bool
+	Text string
+	Done bool
 }
 
 // Issue is a problem found in the diff.
@@ -139,10 +139,10 @@ func Review(ctx context.Context, api ReviewAPI, opts ReviewOptions) (*ReviewResu
 	// Review each changed file.
 	for _, f := range files {
 		fr := FileReview{
-			Path:       f.Filename,
-			Status:     f.Status,
-			Additions:  f.Additions,
-			Deletions:  f.Deletions,
+			Path:      f.Filename,
+			Status:    f.Status,
+			Additions: f.Additions,
+			Deletions: f.Deletions,
 		}
 		fr.Comments = reviewFile(f, prTemplate, issueTemplates, files)
 		res.Files = append(res.Files, fr)
@@ -521,8 +521,8 @@ var secretPatterns = []string{
 	`(?i)(api[_-]?key|apikey)\s*[:=]\s*["']?[A-Za-z0-9_-]{16,}["']?`,
 	`(?i)(secret|password|passwd|token)\s*[:=]\s*["']?[A-Za-z0-9_-]{16,}["']?`,
 	`(?i)(private[_-]?key|privatekey)\s*[:=]\s*["']?[A-Za-z0-9+/=]{32,}["']?`,
-	`(?i)sk-[A-Za-z0-9]{20,}`,               // OpenAI-style keys
-	`(?i)ghp_[A-Za-z0-9]{36,}`,               // GitHub personal access tokens
+	`(?i)sk-[A-Za-z0-9]{20,}`,  // OpenAI-style keys
+	`(?i)ghp_[A-Za-z0-9]{36,}`, // GitHub personal access tokens
 	`(?i)github[_-]?token\s*[:=]\s*["']?[A-Za-z0-9_-]{20,}["']?`,
 }
 

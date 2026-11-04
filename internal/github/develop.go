@@ -106,14 +106,14 @@ func (c *Client) GetPull(ctx context.Context, number int) (PullDetail, error) {
 type PullFile struct {
 	SHA              string `json:"sha"`
 	Filename         string `json:"filename"`
-	Status           string `json:"status"`          // added, modified, removed, renamed
+	Status           string `json:"status"` // added, modified, removed, renamed
 	Additions        int    `json:"additions"`
 	Deletions        int    `json:"deletions"`
 	Changes          int    `json:"changes"`
 	BlobURL          string `json:"blob_url"`
 	RawURL           string `json:"raw_url"`
 	PreviousFilename string `json:"previous_filename"`
-	Patch            string `json:"patch"`           // diff hunk; empty for binary/oversized files
+	Patch            string `json:"patch"` // diff hunk; empty for binary/oversized files
 }
 
 // GetPullFiles returns the files changed in a pull request. It follows the
