@@ -1,0 +1,52 @@
+# =============================================================================
+# resolve-issue.yml — Close a PR's tracking issue on merge
+#
+# Dogfood: environments-bots runs its own developer bot, built from the base
+# commit (not a pinned release). When a pull request merges, the developer
+# closes the one-to-one tracking issue open-pr.yml opened for the branch.
+# The resolve command takes the pull request number and derives the branch.
+#
+# Trigger scope:
+#   pull_request closed, only when merged == true
+#
+# Secrets required:
+#   DEVELOPER_APP_ID, DEVELOPER_APP_PRIVATE_KEY — Developer App credentials
+# =============================================================================
+name: Resolve tracking issue
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    name: close the tracking issue
+    if: github.event.pull_request.merged == true
+    runs-on: self-hosted
+    steps:
+      - name: Check out the base commit
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          # Self-hosted runners keep Go's caches on a persistent volume.
+          cache: false
+
+      - name: Generate Developer App token
+        id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.DEVELOPER_APP_ID }}
+          private-key: ${{ secrets.DEVELOPER_APP_PRIVATE_KEY }}
+          owner: blanketops
+          repositories: ${{ github.event.repository.name }}
+
+      - name: Resolve
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: go run ./cmd/developer resolve -pull "${{ github.event.pull_request.number }}"
