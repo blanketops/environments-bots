@@ -1,3 +1,17 @@
+## [0.0.8] - 2026-11-04
+
+### 🐛 Bug Fixes
+
+- *(developer)* Skip open when branch has no commits ahead of base
+
+### 📚 Documentation
+
+- Auto-generate code documentation [skip ci] (#51)
+
+### ⚙️ Miscellaneous Tasks
+
+- Sync develop with main after release/v0.0.7
+- Dogfood the developer bot in environments-bots
 ## [0.0.7] - 2026-11-03
 
 ### 🚀 Features
@@ -12,6 +26,7 @@
 ### ⚙️ Miscellaneous Tasks
 
 - Sync develop with main after release/v0.0.6
+- *(release)* Update changelog for v0.0.7 (#45)
 ## [0.0.6] - 2026-11-03
 
 ### 🚀 Features
