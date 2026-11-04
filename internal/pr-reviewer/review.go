@@ -676,9 +676,10 @@ func summarize(res *ReviewResult) string {
 	errorCount := 0
 	warningCount := 0
 	for _, iss := range res.Issues {
-		if iss.Severity == "error" {
+		switch iss.Severity {
+		case "error":
 			errorCount++
-		} else if iss.Severity == "warning" {
+		case "warning":
 			warningCount++
 		}
 	}
