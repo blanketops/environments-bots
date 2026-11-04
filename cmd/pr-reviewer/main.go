@@ -34,7 +34,8 @@ import (
 	"time"
 
 	"github.com/blanketops/environments-bots/internal/github"
-	"github.com/blanketops/environments-bots/internal/pr-reviewer"
+	"github.com/blanketops/environments-bots/internal/llm"
+	prreviewer "github.com/blanketops/environments-bots/internal/pr-reviewer"
 )
 
 var version = "dev"
@@ -165,6 +166,7 @@ func runReview(args []string, stdout, stderr io.Writer, getenv func(string) stri
 		Repo:   c.repo,
 		PR:     *pr,
 		DryRun: c.dryRun,
+		LLM:    llm.FromEnv(getenv),
 	})
 	if err != nil {
 		return fail(stderr, "review", err)
