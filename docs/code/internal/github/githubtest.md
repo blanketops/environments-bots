@@ -183,10 +183,12 @@ type Server struct {
     Releases        map[string]Release  // tag -> published release
     Milestones      []*Milestone
     Pulls           []Pull
-    Branches        map[string]string // branch -> commit
-    Merges          []Merge           // server-side merges, in order
-    CommitsOnBranch []CommitOnBranch  // GraphQL createCommitOnBranch, in order
-    WorkflowRuns    []WorkflowRun     // Actions runs, newest first
+    PullFiles       map[int][]github.PullFile // pull request number -> changed files
+    Branches        map[string]string         // branch -> commit
+    Files           map[string]string         // path -> file content (GET /contents)
+    Merges          []Merge                   // server-side merges, in order
+    CommitsOnBranch []CommitOnBranch          // GraphQL createCommitOnBranch, in order
+    WorkflowRuns    []WorkflowRun             // Actions runs, newest first
     // Login is the author of issues created through the API (the App\'s bot).
     Login string
     // contains filtered or unexported fields
