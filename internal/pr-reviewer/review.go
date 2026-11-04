@@ -31,6 +31,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/blanketops/environments-bots/internal/github"
@@ -41,7 +42,7 @@ type ReviewAPI interface {
 	GetPull(ctx context.Context, number int) (github.PullDetail, error)
 	GetPullFiles(ctx context.Context, number int) ([]github.PullFile, error)
 	GetContents(ctx context.Context, path string) (string, error)
-	CreateReview(ctx context.Context, number int, body, event string) (github.Review, error)
+	CreateReview(ctx context.Context, number int, body, event string, comments []github.ReviewComment) (github.Review, error)
 	EnsureLabel(ctx context.Context, name, color, description string) error
 	AddLabels(ctx context.Context, number int, labels []string) error
 	Comment(ctx context.Context, number int, body string) error
@@ -148,8 +149,9 @@ func Review(ctx context.Context, api ReviewAPI, opts ReviewOptions) (*ReviewResu
 		res.Files = append(res.Files, fr)
 	}
 
-	// Checklist: mark items done if they appear in the PR body.
-	res.Checklist = markChecklistDone(res.Checklist, pull.Title, "")
+	// Checklist: mark items done if they appear in the PR body (where the
+	// author ticks them), not just the title.
+	res.Checklist = markChecklistDone(res.Checklist, pull.Body)
 
 	// Find issues in the diff.
 	res.Issues = findIssues(files)
@@ -177,8 +179,9 @@ func Review(ctx context.Context, api ReviewAPI, opts ReviewOptions) (*ReviewResu
 		}
 	}
 
-	// Post the review comment.
-	if _, err := api.CreateReview(ctx, opts.PR, res.Comment, "COMMENT"); err != nil {
+	// Post the review: the summary as the body, line-specific findings as
+	// inline comments on the diff.
+	if _, err := api.CreateReview(ctx, opts.PR, res.Comment, "COMMENT", inlineComments(res.Files)); err != nil {
 		return res, fmt.Errorf("post review on pull request #%d: %w", opts.PR, err)
 	}
 
@@ -284,17 +287,20 @@ func reviewFile(f github.PullFile, prTemplate string, issueTemplates []string, a
 		})
 	}
 
-	// Secret scan on the patch.
+	// Line-specific scans on the patch's added lines: hardcoded secrets and
+	// untrusted input interpolated straight into a shell or query.
 	if f.Patch != "" {
-		for _, pattern := range secretPatterns {
-			if re := regexp.MustCompile(pattern); re.FindStringIndex(f.Patch) != nil {
-				comments = append(comments, FileComment{
-					Line: 0,
-					Body: fmt.Sprintf("Possible hardcoded secret detected (%s). Do not commit credentials; use a secret store instead.",
-						pattern),
-				})
-				break
-			}
+		if line := matchAdded(f.Patch, secretRes); line > 0 {
+			comments = append(comments, FileComment{
+				Line: line,
+				Body: "Possible hardcoded secret on this line. Never commit credentials; use a secret store or an Actions secret.",
+			})
+		}
+		if line := matchAdded(f.Patch, untrustedRes); line > 0 {
+			comments = append(comments, FileComment{
+				Line: line,
+				Body: "Untrusted input is interpolated directly here. Pass it through an env var (quoted), never inline into a shell command or query.",
+			})
 		}
 	}
 
@@ -526,6 +532,70 @@ var secretPatterns = []string{
 	`(?i)github[_-]?token\s*[:=]\s*["']?[A-Za-z0-9_-]{20,}["']?`,
 }
 
+// secretRes is the precompiled secret scanners.
+var secretRes = compileAll(secretPatterns)
+
+// untrustedPatterns match GitHub Actions script-injection vectors: a
+// user-controlled field interpolated where a workflow can execute it.
+var untrustedPatterns = []string{
+	`\$\{\{\s*github\.event\.[A-Za-z0-9_.]*\.(title|body|ref|name|email|login)\s*\}\}`,
+	`\$\{\{\s*github\.(head_ref|event\.comment\.body|event\.issue\.title|event\.issue\.body|event\.pull_request\.title|event\.pull_request\.body)\s*\}\}`,
+}
+
+// untrustedRes is the precompiled untrusted-input scanners.
+var untrustedRes = compileAll(untrustedPatterns)
+
+func compileAll(pats []string) []*regexp.Regexp {
+	res := make([]*regexp.Regexp, len(pats))
+	for i, p := range pats {
+		res[i] = regexp.MustCompile(p)
+	}
+	return res
+}
+
+var hunkRe = regexp.MustCompile(`^@@ -\d+(?:,\d+)? \+(\d+)`)
+
+// matchAdded returns the new-file line number of the first added ("+") line in
+// the unified-diff patch that matches any of res, or 0 when none does. It
+// walks hunk headers to keep the new-file line count accurate.
+func matchAdded(patch string, res []*regexp.Regexp) int {
+	newLine := 0
+	for _, line := range strings.Split(patch, "\n") {
+		switch {
+		case strings.HasPrefix(line, "@@"):
+			if m := hunkRe.FindStringSubmatch(line); m != nil {
+				n, _ := strconv.Atoi(m[1])
+				newLine = n - 1
+			}
+		case strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++"):
+			newLine++
+			for _, re := range res {
+				if re.MatchString(line[1:]) {
+					return newLine
+				}
+			}
+		case strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "---"):
+			// a deletion does not advance the new-file line
+		default:
+			newLine++
+		}
+	}
+	return 0
+}
+
+// inlineComments collects the line-specific file comments as review comments.
+func inlineComments(files []FileReview) []github.ReviewComment {
+	var out []github.ReviewComment
+	for _, f := range files {
+		for _, c := range f.Comments {
+			if c.Line > 0 {
+				out = append(out, github.ReviewComment{Path: f.Path, Line: c.Line, Body: c.Body})
+			}
+		}
+	}
+	return out
+}
+
 // buildComment builds the review comment body.
 func buildComment(res *ReviewResult) string {
 	var b strings.Builder
@@ -606,9 +676,10 @@ func summarize(res *ReviewResult) string {
 	errorCount := 0
 	warningCount := 0
 	for _, iss := range res.Issues {
-		if iss.Severity == "error" {
+		switch iss.Severity {
+		case "error":
 			errorCount++
-		} else if iss.Severity == "warning" {
+		case "warning":
 			warningCount++
 		}
 	}
