@@ -175,7 +175,7 @@ func TestOpenNoTypeLabelForPlainBranch(t *testing.T) {
 
 func TestOpenUsesRepoTemplates(t *testing.T) {
 	s, api := openServer(t, "feat/widgets", "feat: add widgets")
-	s.Files[".github/PULL_REQUEST_TEMPLATE.md"] = "## What\n\n<!-- placeholder -->\n\n## Why\n\n<!-- placeholder -->\n\n## Checklist\n\nCHECKLIST-MARKER\n"
+	s.Files[".github/PULL_REQUEST_TEMPLATE.md"] = "## What\n\nTEMPLATE-PR-MARKER\n"
 	s.Files[".github/ISSUE_TEMPLATE.md"] = "## Summary\n\nTEMPLATE-ISSUE-MARKER\n"
 	res, err := develop.Open(context.Background(), api, develop.OpenOptions{Branch: "feat/widgets"})
 	if err != nil {
@@ -184,23 +184,12 @@ func TestOpenUsesRepoTemplates(t *testing.T) {
 	if res.Pull == nil || res.Issue == nil {
 		t.Fatalf("want a pull request and an issue, got %+v", res)
 	}
-	body := s.Pulls[0].Body
-	// What is filled from the commit subject, Why from the branch type, the
-	// placeholders are gone, and the untouched section and footer remain.
-	if !strings.Contains(body, "feat: add widgets") {
-		t.Fatalf("What not filled from the commit subject: %q", body)
+	// The pull request uses the repo's PR template and keeps the tracking footer.
+	if !strings.Contains(s.Pulls[0].Body, "TEMPLATE-PR-MARKER") {
+		t.Fatalf("pull body does not use the PR template: %q", s.Pulls[0].Body)
 	}
-	if !strings.Contains(body, "feat") || !strings.Contains(body, "feat/widgets") {
-		t.Fatalf("Why not filled from the branch type: %q", body)
-	}
-	if strings.Contains(body, "placeholder") {
-		t.Fatalf("template placeholder left in What/Why: %q", body)
-	}
-	if !strings.Contains(body, "CHECKLIST-MARKER") {
-		t.Fatalf("untouched section lost: %q", body)
-	}
-	if !strings.Contains(body, "Tracks #") {
-		t.Fatalf("tracking footer lost: %q", body)
+	if !strings.Contains(s.Pulls[0].Body, "Tracks #") {
+		t.Fatalf("pull body lost the tracking footer: %q", s.Pulls[0].Body)
 	}
 	// The tracking issue uses the repo's issue template and keeps the table.
 	is := s.Issue("[pr] feat/widgets")

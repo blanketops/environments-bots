@@ -174,7 +174,7 @@ func Open(ctx context.Context, api OpenAPI, opts OpenOptions) (OpenResult, error
 	}
 	res.Issue = issue
 
-	pull, err := api.CreatePull(ctx, title, branch, base, pullBody(prTmpl, ahead, branch, issue.Number))
+	pull, err := api.CreatePull(ctx, title, branch, base, pullBody(prTmpl, issue.Number))
 	if err != nil {
 		return res, fmt.Errorf("open pull request: %w", err)
 	}
@@ -263,79 +263,12 @@ func issueBody(tmpl, branch, base, title string) string {
 	return b.String()
 }
 
-// pullBody is the pull request body. When the repo has a PR template, its
-// What and Why sections are filled from the branch's commits and type and the
-// tracking footer is appended; otherwise a plain body is returned.
-func pullBody(tmpl string, commits []github.Commit, branch string, issue int) string {
+func pullBody(tmpl string, issue int) string {
 	footer := fmt.Sprintf("Opened by the developer bot on the first push to this branch.\n\nTracks #%d.\n", issue)
 	if strings.TrimSpace(tmpl) == "" {
 		return footer
 	}
-	filled := fillSections(tmpl, map[string]string{
-		"what": whatSection(commits),
-		"why":  whySection(branch),
-	})
-	return strings.TrimRight(filled, "\n") + "\n\n---\n\n" + footer
-}
-
-// whatSection lists the branch's commit subjects, oldest first, each in a code
-// span so an untrusted subject cannot break the markdown or mention anyone.
-func whatSection(commits []github.Commit) string {
-	var b strings.Builder
-	for _, c := range commits {
-		if s := subject(c.Message); s != "" {
-			fmt.Fprintf(&b, "* %s\n", code(s))
-		}
-	}
-	if b.Len() == 0 {
-		return "* _no commit subjects_"
-	}
-	return strings.TrimRight(b.String(), "\n")
-}
-
-// whySection is the branch's Conventional Commit type and name: a scaffold a
-// person refines, never invented intent.
-func whySection(branch string) string {
-	if t, _, ok := strings.Cut(branch, "/"); ok && conventionalTypes[t] {
-		return fmt.Sprintf("A %s change on %s.", code(t), code(branch))
-	}
-	return fmt.Sprintf("Changes on %s.", code(branch))
-}
-
-// fillSections replaces the body under each level-2 heading whose normalised
-// title is a key of content, leaving every other section untouched. It lets
-// the bot fill a template's What and Why without disturbing the rest.
-func fillSections(tmpl string, content map[string]string) string {
-	lines := strings.Split(tmpl, "\n")
-	var out []string
-	for i := 0; i < len(lines); {
-		title, isHeading := sectionTitle(lines[i])
-		body, fill := content[normalizeHeading(title)]
-		if !isHeading || !fill {
-			out = append(out, lines[i])
-			i++
-			continue
-		}
-		out = append(out, lines[i], "", strings.TrimRight(body, "\n"), "")
-		for i++; i < len(lines); i++ {
-			if _, next := sectionTitle(lines[i]); next {
-				break
-			}
-		}
-	}
-	return strings.Join(out, "\n")
-}
-
-// sectionTitle returns the title of a level-2 ("## ") markdown heading.
-func sectionTitle(line string) (string, bool) {
-	if t, ok := strings.CutPrefix(line, "## "); ok {
-		return strings.TrimSpace(t), true
-	}
-	return "", false
-}
-
-func normalizeHeading(title string) string {
-	return strings.ToLower(strings.TrimSpace(title))
+	return strings.TrimRight(tmpl, "\n") + "\n\n---\n\n" + footer
 }
 
 // prTemplatePaths and issueTemplatePaths are the locations GitHub honours for
