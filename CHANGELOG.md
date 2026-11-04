@@ -1,3 +1,34 @@
+## [0.0.9] - 2026-11-04
+
+### 🚀 Features
+
+- *(developer)* Honour the repo's PR and issue templates
+- Add pr-reviewer bot for pull request review
+- *(developer)* Honour the repo's PR and issue templates
+- *(developer)* Fill the PR template's What and Why
+- *(pr-reviewer)* Inline advisory, body-based checklist, untrusted-input scan
+- *(pr-reviewer)* Add inline advisory and untrusted-input scan
+- *(developer)* Restore the PR template What/Why fill
+- *(pr-reviewer)* Flag leftover debug/panic and TODO/FIXME inline
+
+### 💼 Other
+
+- Merge release/v0.0.9 into main
+
+### 📚 Documentation
+
+- Auto-generate code documentation [skip ci] (#71)
+
+### 🎨 Styling
+
+- Gofmt the githubtest Files field alignment
+- Gofmt the pr-reviewer code
+- *(pr-reviewer)* Tagged switch on issue severity (QF1003)
+
+### ⚙️ Miscellaneous Tasks
+
+- Sync develop with main after release/v0.0.8
+- *(developer)* Sanitize resolve-issue input
 ## [0.0.8] - 2026-11-04
 
 ### 🐛 Bug Fixes
@@ -8,10 +39,15 @@
 
 - Auto-generate code documentation [skip ci] (#51)
 
+### 🧪 Testing
+
+- Dogfood the developer bot's open and resolve
+
 ### ⚙️ Miscellaneous Tasks
 
 - Sync develop with main after release/v0.0.7
 - Dogfood the developer bot in environments-bots
+- *(release)* Update changelog for v0.0.8 (#52)
 ## [0.0.7] - 2026-11-03
 
 ### 🚀 Features
