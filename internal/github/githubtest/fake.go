@@ -88,11 +88,11 @@ type Server struct {
 	Milestones      []*Milestone
 	Pulls           []Pull
 	PullFiles       map[int][]github.PullFile // pull request number -> changed files
-	Branches        map[string]string // branch -> commit
-	Files           map[string]string // path -> file content (GET /contents)
-	Merges          []Merge           // server-side merges, in order
-	CommitsOnBranch []CommitOnBranch  // GraphQL createCommitOnBranch, in order
-	WorkflowRuns    []WorkflowRun     // Actions runs, newest first
+	Branches        map[string]string         // branch -> commit
+	Files           map[string]string         // path -> file content (GET /contents)
+	Merges          []Merge                   // server-side merges, in order
+	CommitsOnBranch []CommitOnBranch          // GraphQL createCommitOnBranch, in order
+	WorkflowRuns    []WorkflowRun             // Actions runs, newest first
 	// Login is the author of issues created through the API (the App\'s bot).
 	Login string
 }
@@ -240,13 +240,13 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 		for _, p := range s.Pulls {
 			if p.Number == n {
 				write(w, http.StatusOK, map[string]any{
-					"number":        p.Number,
-					"title":         p.Title,
-					"state":         p.State,
-					"html_url":      fmt.Sprintf("%s/pull/%d", s.URL, p.Number),
-					"head":          map[string]string{"ref": p.Head},
-					"base":          map[string]string{"ref": p.Base},
-					"merged":        p.Merged,
+					"number":   p.Number,
+					"title":    p.Title,
+					"state":    p.State,
+					"html_url": fmt.Sprintf("%s/pull/%d", s.URL, p.Number),
+					"head":     map[string]string{"ref": p.Head},
+					"base":     map[string]string{"ref": p.Base},
+					"merged":   p.Merged,
 				})
 				return
 			}
@@ -262,8 +262,8 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodGet && strings.HasSuffix(rest, ".md"):
 		// Return stub content for any markdown file (PR templates, issue templates, READMEs).
 		write(w, http.StatusOK, map[string]any{
-			"type":    "file",
-			"content": "# Stub content for " + rest,
+			"type":     "file",
+			"content":  "# Stub content for " + rest,
 			"encoding": "base64",
 		})
 	case r.Method == http.MethodPost && strings.HasPrefix(rest, "/pulls/") && strings.HasSuffix(rest, "/reviews"):
