@@ -28,11 +28,15 @@ Package github is the small part of the GitHub REST and GraphQL APIs that test\-
   - [func \(c \*Client\) CreateCommitOnBranch\(ctx context.Context, branch, headline, body, expectedHead string, additions \[\]FileAddition, deletions \[\]string\) \(string, error\)](<#Client.CreateCommitOnBranch>)
   - [func \(c \*Client\) CreateIssue\(ctx context.Context, title, body string, labels \[\]string\) \(Issue, error\)](<#Client.CreateIssue>)
   - [func \(c \*Client\) CreatePull\(ctx context.Context, title, head, base, body string\) \(Pull, error\)](<#Client.CreatePull>)
+  - [func \(c \*Client\) CreateReview\(ctx context.Context, number int, body, event string, comments \[\]ReviewComment\) \(Review, error\)](<#Client.CreateReview>)
   - [func \(c \*Client\) DeleteBranch\(ctx context.Context, branch string\) error](<#Client.DeleteBranch>)
   - [func \(c \*Client\) DeleteWorkflowRun\(ctx context.Context, id int64\) error](<#Client.DeleteWorkflowRun>)
   - [func \(c \*Client\) EnsureLabel\(ctx context.Context, name, color, description string\) error](<#Client.EnsureLabel>)
+  - [func \(c \*Client\) FileContent\(ctx context.Context, path string\) \(string, error\)](<#Client.FileContent>)
   - [func \(c \*Client\) FindProject\(ctx context.Context, org string, number int\) \(Project, error\)](<#Client.FindProject>)
+  - [func \(c \*Client\) GetContents\(ctx context.Context, path string\) \(string, error\)](<#Client.GetContents>)
   - [func \(c \*Client\) GetPull\(ctx context.Context, number int\) \(PullDetail, error\)](<#Client.GetPull>)
+  - [func \(c \*Client\) GetPullFiles\(ctx context.Context, number int\) \(\[\]PullFile, error\)](<#Client.GetPullFiles>)
   - [func \(c \*Client\) ListCommits\(ctx context.Context, ref string\) \(\[\]Commit, error\)](<#Client.ListCommits>)
   - [func \(c \*Client\) ListIssues\(ctx context.Context, label string\) \(\[\]Issue, error\)](<#Client.ListIssues>)
   - [func \(c \*Client\) ListMilestones\(ctx context.Context\) \(\[\]Milestone, error\)](<#Client.ListMilestones>)
@@ -51,7 +55,10 @@ Package github is the small part of the GitHub REST and GraphQL APIs that test\-
 - [type Project](<#Project>)
 - [type Pull](<#Pull>)
 - [type PullDetail](<#PullDetail>)
+- [type PullFile](<#PullFile>)
 - [type Release](<#Release>)
+- [type Review](<#Review>)
+- [type ReviewComment](<#ReviewComment>)
 - [type WorkflowRun](<#WorkflowRun>)
   - [func \(r WorkflowRun\) Completed\(\) bool](<#WorkflowRun.Completed>)
 
@@ -227,6 +234,15 @@ func (c *Client) CreatePull(ctx context.Context, title, head, base, body string)
 
 CreatePull opens a pull request from head into base.
 
+<a name="Client.CreateReview"></a>
+### func \(\*Client\) CreateReview
+
+```go
+func (c *Client) CreateReview(ctx context.Context, number int, body, event string, comments []ReviewComment) (Review, error)
+```
+
+CreateReview posts a review on a pull request. event is one of APPROVE, REQUEST\_CHANGES, or COMMENT. comments, when non\-empty, are posted as inline comments on the right \(new\-file\) side of the diff.
+
 <a name="Client.DeleteBranch"></a>
 ### func \(\*Client\) DeleteBranch
 
@@ -254,6 +270,15 @@ func (c *Client) EnsureLabel(ctx context.Context, name, color, description strin
 
 EnsureLabel creates the label unless it exists.
 
+<a name="Client.FileContent"></a>
+### func \(\*Client\) FileContent
+
+```go
+func (c *Client) FileContent(ctx context.Context, path string) (string, error)
+```
+
+FileContent returns the decoded contents of the file at path on the repository's default branch; IsNotFound\(err\) when there is no such file.
+
 <a name="Client.FindProject"></a>
 ### func \(\*Client\) FindProject
 
@@ -263,6 +288,15 @@ func (c *Client) FindProject(ctx context.Context, org string, number int) (Proje
 
 FindProject looks up project number of the organization org.
 
+<a name="Client.GetContents"></a>
+### func \(\*Client\) GetContents
+
+```go
+func (c *Client) GetContents(ctx context.Context, path string) (string, error)
+```
+
+GetContents returns the decoded content of a file at path \(GET /repos/\{owner\}/\{repo\}/contents/\{path\}\).
+
 <a name="Client.GetPull"></a>
 ### func \(\*Client\) GetPull
 
@@ -271,6 +305,15 @@ func (c *Client) GetPull(ctx context.Context, number int) (PullDetail, error)
 ```
 
 GetPull returns a pull request's detail.
+
+<a name="Client.GetPullFiles"></a>
+### func \(\*Client\) GetPullFiles
+
+```go
+func (c *Client) GetPullFiles(ctx context.Context, number int) ([]PullFile, error)
+```
+
+GetPullFiles returns the files changed in a pull request. It follows the Link header's next page until there is none.
 
 <a name="Client.ListCommits"></a>
 ### func \(\*Client\) ListCommits
@@ -471,12 +514,33 @@ PullDetail is one pull request's detail \(GET /pulls/\{number\}\): its head and 
 type PullDetail struct {
     Number         int
     Title          string
+    Body           string
     State          string
     HTMLURL        string
     Head           string
     Base           string
     Merged         bool
     MergeCommitSHA string
+}
+```
+
+<a name="PullFile"></a>
+## type PullFile
+
+PullFile is one file changed in a pull request \(GET /pulls/\{number\}/files\).
+
+```go
+type PullFile struct {
+    SHA              string `json:"sha"`
+    Filename         string `json:"filename"`
+    Status           string `json:"status"` // added, modified, removed, renamed
+    Additions        int    `json:"additions"`
+    Deletions        int    `json:"deletions"`
+    Changes          int    `json:"changes"`
+    BlobURL          string `json:"blob_url"`
+    RawURL           string `json:"raw_url"`
+    PreviousFilename string `json:"previous_filename"`
+    Patch            string `json:"patch"` // diff hunk; empty for binary/oversized files
 }
 ```
 
@@ -492,6 +556,33 @@ type Release struct {
     HTMLURL    string `json:"html_url"`
     Draft      bool   `json:"draft"`
     Prerelease bool   `json:"prerelease"`
+}
+```
+
+<a name="Review"></a>
+## type Review
+
+Review is a pull request review \(POST /pulls/\{number\}/reviews\).
+
+```go
+type Review struct {
+    ID      int    `json:"id"`
+    State   string `json:"state"` // approved, changes_requested, comment
+    Body    string `json:"body"`
+    HTMLURL string `json:"html_url"`
+}
+```
+
+<a name="ReviewComment"></a>
+## type ReviewComment
+
+ReviewComment is an inline comment on a line of a changed file.
+
+```go
+type ReviewComment struct {
+    Path string
+    Line int
+    Body string
 }
 ```
 
