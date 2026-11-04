@@ -22,6 +22,7 @@ package github
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -204,6 +205,26 @@ func (c *Client) CreateIssue(ctx context.Context, title, body string, labels []s
 // Comment adds a comment to an issue.
 func (c *Client) Comment(ctx context.Context, number int, body string) error {
 	return c.do(ctx, http.MethodPost, c.repoPath(fmt.Sprintf("/issues/%d/comments", number)), map[string]string{"body": body}, nil)
+}
+
+// FileContent returns the decoded contents of the file at path on the
+// repository's default branch; IsNotFound(err) when there is no such file.
+func (c *Client) FileContent(ctx context.Context, path string) (string, error) {
+	var out struct {
+		Content  string `json:"content"`
+		Encoding string `json:"encoding"`
+	}
+	if err := c.do(ctx, http.MethodGet, c.repoPath("/contents/"+path), nil, &out); err != nil {
+		return "", err
+	}
+	if out.Encoding != "base64" {
+		return out.Content, nil
+	}
+	b, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(out.Content, "\n", ""))
+	if err != nil {
+		return "", fmt.Errorf("decode %s: %w", path, err)
+	}
+	return string(b), nil
 }
 
 // EnsureLabel creates the label unless it exists.

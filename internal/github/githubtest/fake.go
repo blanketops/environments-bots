@@ -86,6 +86,7 @@ type Server struct {
 	Milestones      []*Milestone
 	Pulls           []Pull
 	Branches        map[string]string // branch -> commit
+	Files           map[string]string // path -> file content (GET /contents)
 	Merges          []Merge           // server-side merges, in order
 	CommitsOnBranch []CommitOnBranch  // GraphQL createCommitOnBranch, in order
 	WorkflowRuns    []WorkflowRun     // Actions runs, newest first
@@ -106,6 +107,7 @@ func New(owner, repo, token string) *Server {
 		RefCommits:    map[string][]Commit{},
 		Releases:      map[string]Release{},
 		Branches:      map[string]string{},
+		Files:         map[string]string{},
 		Login:         "blanketops-environments-releaser[bot]",
 	}
 	s.Server = httptest.NewServer(http.HandlerFunc(s.handle))
