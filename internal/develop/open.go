@@ -166,7 +166,7 @@ func Open(ctx context.Context, api OpenAPI, opts OpenOptions) (OpenResult, error
 		return res, err
 	}
 	if issue == nil {
-		created, err := api.CreateIssue(ctx, issueTitle, issueBody(issueTmpl, branch, base, title), res.Labels)
+		created, err := api.CreateIssue(ctx, issueTitle, issueBody(issueTmpl, ahead, branch, base), res.Labels)
 		if err != nil {
 			return res, fmt.Errorf("open tracking issue: %w", err)
 		}
@@ -249,18 +249,25 @@ func openIssue(ctx context.Context, api issueLister, title string) (*github.Issu
 	return nil, nil
 }
 
-func issueBody(tmpl, branch, base, title string) string {
-	var b strings.Builder
-	if strings.TrimSpace(tmpl) != "" {
-		b.WriteString(strings.TrimRight(tmpl, "\n"))
-		b.WriteString("\n\n---\n\n")
+func issueBody(tmpl string, commits []github.Commit, branch, base string) string {
+	summary := whatSection(commits)
+	context := issueContext(branch, base)
+	if strings.TrimSpace(tmpl) == "" {
+		return "## Summary\n\n" + summary + "\n\n## Context\n\n" + context + "\n"
 	}
-	fmt.Fprintf(&b, "Tracks the pull request the developer bot opened for %s into %s.\n\n", code(branch), code(base))
-	b.WriteString("| | |\n| --- | --- |\n")
-	fmt.Fprintf(&b, "| Branch | %s |\n", code(branch))
-	fmt.Fprintf(&b, "| Base | %s |\n", code(base))
-	fmt.Fprintf(&b, "| Title | %s |\n", code(title))
-	return b.String()
+	return strings.TrimRight(fillSections(tmpl, map[string]string{
+		"summary": summary,
+		"context": context,
+	}), "\n") + "\n"
+}
+
+// issueContext is the branch's Conventional Commit type, name and base: a
+// scaffold a person refines, mirroring the pull request's Why.
+func issueContext(branch, base string) string {
+	if t, _, ok := strings.Cut(branch, "/"); ok && conventionalTypes[t] {
+		return fmt.Sprintf("A %s change on %s, tracked into %s.", code(t), code(branch), code(base))
+	}
+	return fmt.Sprintf("Changes on %s, tracked into %s.", code(branch), code(base))
 }
 
 // pullBody is the pull request body. When the repo has a PR template, its

@@ -176,7 +176,7 @@ func TestOpenNoTypeLabelForPlainBranch(t *testing.T) {
 func TestOpenUsesRepoTemplates(t *testing.T) {
 	s, api := openServer(t, "feat/widgets", "feat: add widgets")
 	s.Files[".github/PULL_REQUEST_TEMPLATE.md"] = "## What\n\n<!-- placeholder -->\n\n## Why\n\n<!-- placeholder -->\n\n## Checklist\n\nCHECKLIST-MARKER\n"
-	s.Files[".github/ISSUE_TEMPLATE.md"] = "## Summary\n\nTEMPLATE-ISSUE-MARKER\n"
+	s.Files[".github/ISSUE_TEMPLATE.md"] = "## Summary\n\n<!-- fill me -->\n\n## Context\n\n<!-- fill me -->\n"
 	res, err := develop.Open(context.Background(), api, develop.OpenOptions{Branch: "feat/widgets"})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -202,13 +202,23 @@ func TestOpenUsesRepoTemplates(t *testing.T) {
 	if !strings.Contains(body, "Tracks #") {
 		t.Fatalf("tracking footer lost: %q", body)
 	}
-	// The tracking issue uses the repo's issue template and keeps the table.
+	// The tracking issue keeps the template's headings but auto-populates them:
+	// Summary from the commit subjects, Context from the branch type and base.
 	is := s.Issue("[pr] feat/widgets")
-	if is == nil || !strings.Contains(is.Body, "TEMPLATE-ISSUE-MARKER") {
-		t.Fatalf("issue body does not use the issue template: %+v", is)
+	if is == nil {
+		t.Fatalf("no tracking issue opened")
 	}
-	if !strings.Contains(is.Body, "Branch") {
-		t.Fatalf("issue body lost the tracking table: %q", is.Body)
+	if !strings.Contains(is.Body, "## Summary") || !strings.Contains(is.Body, "## Context") {
+		t.Fatalf("issue body dropped the template headings: %q", is.Body)
+	}
+	if strings.Contains(is.Body, "fill me") {
+		t.Fatalf("issue body left a template placeholder unfilled: %q", is.Body)
+	}
+	if !strings.Contains(is.Body, "`feat: add widgets`") {
+		t.Fatalf("issue Summary not populated from the commit subject: %q", is.Body)
+	}
+	if !strings.Contains(is.Body, "`feat/widgets`") || !strings.Contains(is.Body, "`develop`") {
+		t.Fatalf("issue Context not populated with branch/base: %q", is.Body)
 	}
 }
 
