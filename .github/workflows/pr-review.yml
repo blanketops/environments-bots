@@ -36,7 +36,7 @@ jobs:
         id: pr-reviewer-token
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ secrets.PR_REVIEWER_APP_ID }}
+          client-id: ${{ vars.PR_REVIEWER_CLIENT_ID }}
           private-key: ${{ secrets.PR_REVIEWER_APP_PRIVATE_KEY }}
           owner: blanketops
           repositories: ${{ github.event.repository.name }}
@@ -59,5 +59,12 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.pr-reviewer-token.outputs.token }}
           PR: ${{ github.event.pull_request.number }}
+          # Optional advisory LLM pass. When LLM_API_KEY is unset the reviewer
+          # stays fully deterministic. Base URL and model are repo variables so
+          # the model can be swapped without code changes (defaults: OpenRouter,
+          # anthropic/claude-sonnet-4).
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
         run: |
           "${RUNNER_TEMP}/pr-reviewer" review -pr "${PR}"

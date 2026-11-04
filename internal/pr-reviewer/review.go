@@ -35,6 +35,7 @@ import (
 	"strings"
 
 	"github.com/blanketops/environments-bots/internal/github"
+	"github.com/blanketops/environments-bots/internal/llm"
 )
 
 // ReviewAPI is the part of the GitHub client review needs.
@@ -56,6 +57,9 @@ type ReviewOptions struct {
 	PR int
 	// DryRun only reads: nothing is posted or labelled.
 	DryRun bool
+	// LLM, when set, adds an advisory model review to the comment. nil keeps
+	// the review fully deterministic.
+	LLM llm.Client
 }
 
 // ReviewResult is the outcome of a Review.
@@ -162,6 +166,14 @@ func Review(ctx context.Context, api ReviewAPI, opts ReviewOptions) (*ReviewResu
 	// Build the review comment.
 	res.Comment = buildComment(res)
 	res.Summary = summarize(res)
+
+	// Optional advisory LLM pass, appended to the comment. It never blocks:
+	// on any error the deterministic review stands.
+	if opts.LLM != nil {
+		if ai, err := llmReview(ctx, opts.LLM, pull, files); err == nil && ai != "" {
+			res.Comment += "\n\n### AI review\n\n" + ai + "\n\n_Advisory, model-generated. Treat as a second opinion._"
+		}
+	}
 
 	if opts.DryRun {
 		return res, nil
@@ -627,6 +639,31 @@ func inlineComments(files []FileReview) []github.ReviewComment {
 		}
 	}
 	return out
+}
+
+// llmReview asks the model for an advisory review of the pull request diff.
+func llmReview(ctx context.Context, client llm.Client, pull github.PullDetail, files []github.PullFile) (string, error) {
+	const system = "You are a senior Go code reviewer for the BlanketOps environments bots. " +
+		"Review the pull request diff. Be terse and specific: flag real problems — bugs, missing error handling, " +
+		"edge cases, unclear naming, security, concurrency. Reference file paths. Do not restate the diff, " +
+		"summarise the changes, or add praise. If it is genuinely fine, say so in one line."
+	var b strings.Builder
+	fmt.Fprintf(&b, "Title: %s\n\n", pull.Title)
+	if strings.TrimSpace(pull.Body) != "" {
+		fmt.Fprintf(&b, "Description:\n%s\n\n", pull.Body)
+	}
+	b.WriteString("Diff:\n")
+	for _, f := range files {
+		if f.Patch == "" {
+			continue
+		}
+		fmt.Fprintf(&b, "\n--- %s (%s) ---\n%s\n", f.Filename, f.Status, f.Patch)
+		if b.Len() > 12000 {
+			b.WriteString("\n[diff truncated]\n")
+			break
+		}
+	}
+	return client.Complete(ctx, system, b.String())
 }
 
 // buildComment builds the review comment body.

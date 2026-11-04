@@ -16,9 +16,39 @@ limitations under the License.
 package prreviewer
 
 import (
+	"context"
 	"regexp"
+	"strings"
 	"testing"
+
+	"github.com/blanketops/environments-bots/internal/github"
 )
+
+type fakeLLM struct {
+	out     string
+	gotUser string
+}
+
+func (f *fakeLLM) Complete(ctx context.Context, system, user string) (string, error) {
+	f.gotUser = user
+	return f.out, nil
+}
+
+func TestLLMReviewBuildsPromptAndReturnsContent(t *testing.T) {
+	f := &fakeLLM{out: "One real concern: foo may nil-panic."}
+	pull := github.PullDetail{Title: "feat: widgets", Body: "adds widgets"}
+	files := []github.PullFile{{Filename: "a.go", Status: "modified", Patch: "@@ -0,0 +1 @@\n+x := compute()"}}
+	out, err := llmReview(context.Background(), f, pull, files)
+	if err != nil {
+		t.Fatalf("llmReview: %v", err)
+	}
+	if out != "One real concern: foo may nil-panic." {
+		t.Fatalf("out = %q", out)
+	}
+	if !strings.Contains(f.gotUser, "a.go") || !strings.Contains(f.gotUser, "feat: widgets") || !strings.Contains(f.gotUser, "adds widgets") {
+		t.Fatalf("prompt missing diff/title/body: %q", f.gotUser)
+	}
+}
 
 func TestMatchAddedReturnsNewFileLine(t *testing.T) {
 	patch := "@@ -1,2 +1,4 @@\n context\n+added one\n+run: echo ${{ github.event.pull_request.title }}\n context2\n"
