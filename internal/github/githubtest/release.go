@@ -16,6 +16,7 @@ limitations under the License.
 package githubtest
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -118,6 +119,16 @@ func (s *Server) handleRelease(w http.ResponseWriter, r *http.Request, rest stri
 			out = append(out, map[string]string{"name": t.Name})
 		}
 		write(w, http.StatusOK, out)
+	case get && strings.HasPrefix(rest, "/contents/"):
+		content, ok := s.Files[strings.TrimPrefix(rest, "/contents/")]
+		if !ok {
+			notFound()
+			return true
+		}
+		write(w, http.StatusOK, map[string]any{
+			"content":  base64.StdEncoding.EncodeToString([]byte(content)),
+			"encoding": "base64",
+		})
 	case get && strings.HasPrefix(rest, "/compare/"):
 		cs, ok := s.Compares[strings.TrimPrefix(rest, "/compare/")]
 		if !ok {
