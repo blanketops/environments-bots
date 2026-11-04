@@ -26,6 +26,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/blanketops/environments-bots/internal/github"
 )
 
 // Issue is a stored issue.
@@ -85,11 +87,12 @@ type Server struct {
 	Releases        map[string]Release  // tag -> published release
 	Milestones      []*Milestone
 	Pulls           []Pull
-	Branches        map[string]string // branch -> commit
-	Files           map[string]string // path -> file content (GET /contents)
-	Merges          []Merge           // server-side merges, in order
-	CommitsOnBranch []CommitOnBranch  // GraphQL createCommitOnBranch, in order
-	WorkflowRuns    []WorkflowRun     // Actions runs, newest first
+	PullFiles       map[int][]github.PullFile // pull request number -> changed files
+	Branches        map[string]string         // branch -> commit
+	Files           map[string]string         // path -> file content (GET /contents)
+	Merges          []Merge                   // server-side merges, in order
+	CommitsOnBranch []CommitOnBranch          // GraphQL createCommitOnBranch, in order
+	WorkflowRuns    []WorkflowRun             // Actions runs, newest first
 	// Login is the author of issues created through the API (the App\'s bot).
 	Login string
 }
@@ -108,6 +111,7 @@ func New(owner, repo, token string) *Server {
 		Releases:      map[string]Release{},
 		Branches:      map[string]string{},
 		Files:         map[string]string{},
+		PullFiles:     map[int][]github.PullFile{},
 		Login:         "blanketops-environments-releaser[bot]",
 	}
 	s.Server = httptest.NewServer(http.HandlerFunc(s.handle))
@@ -231,6 +235,46 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	case s.handleDevelop(w, r, rest):
 	case s.handleClean(w, r, rest):
 	case s.handleRelease(w, r, rest):
+	case r.Method == http.MethodGet && strings.HasPrefix(rest, "/pulls/") && !strings.HasSuffix(rest, "/files") && !strings.HasSuffix(rest, "/reviews"):
+		n, _ := strconv.Atoi(strings.TrimPrefix(rest, "/pulls/"))
+		for _, p := range s.Pulls {
+			if p.Number == n {
+				write(w, http.StatusOK, map[string]any{
+					"number":   p.Number,
+					"title":    p.Title,
+					"state":    p.State,
+					"html_url": fmt.Sprintf("%s/pull/%d", s.URL, p.Number),
+					"head":     map[string]string{"ref": p.Head},
+					"base":     map[string]string{"ref": p.Base},
+					"merged":   p.Merged,
+				})
+				return
+			}
+		}
+		write(w, http.StatusNotFound, map[string]string{"message": "Not Found"})
+	case r.Method == http.MethodGet && strings.HasPrefix(rest, "/pulls/") && strings.HasSuffix(rest, "/files"):
+		n, _ := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(rest, "/pulls/"), "/files"))
+		files := s.PullFiles[n]
+		if files == nil {
+			files = []github.PullFile{}
+		}
+		write(w, http.StatusOK, files)
+	case r.Method == http.MethodGet && strings.HasSuffix(rest, ".md"):
+		// Return stub content for any markdown file (PR templates, issue templates, READMEs).
+		write(w, http.StatusOK, map[string]any{
+			"type":     "file",
+			"content":  "# Stub content for " + rest,
+			"encoding": "base64",
+		})
+	case r.Method == http.MethodPost && strings.HasPrefix(rest, "/pulls/") && strings.HasSuffix(rest, "/reviews"):
+		n, _ := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(rest, "/repos/"+s.Owner+"/"+s.Repo+"/pulls/"), "/reviews"))
+		var in struct {
+			Body  string `json:"body"`
+			Event string `json:"event"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&in)
+		review := github.Review{ID: len(s.Pulls) + 1, State: in.Event, Body: in.Body, HTMLURL: fmt.Sprintf("%s/pull/%d#review-%d", s.URL, n, len(s.Pulls)+1)}
+		write(w, http.StatusCreated, review)
 	default:
 		write(w, http.StatusNotFound, map[string]string{"message": "Not Found"})
 	}
