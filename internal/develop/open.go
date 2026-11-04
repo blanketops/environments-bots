@@ -47,6 +47,7 @@ var conventionalTypes = map[string]bool{
 type OpenAPI interface {
 	ListPulls(ctx context.Context, state, base, head string) ([]github.Pull, error)
 	Compare(ctx context.Context, base, head string) ([]github.Commit, error)
+	FileContent(ctx context.Context, path string) (string, error)
 	CreatePull(ctx context.Context, title, head, base, body string) (github.Pull, error)
 	EnsureLabel(ctx context.Context, name, color, description string) error
 	ListIssues(ctx context.Context, label string) ([]github.Issue, error)
@@ -140,6 +141,17 @@ func Open(ctx context.Context, api OpenAPI, opts OpenOptions) (OpenResult, error
 		return res, nil
 	}
 
+	// Honour the repository's templates when it has them, so the bot's pull
+	// request and tracking issue match the domain's own docs.
+	prTmpl, err := repoTemplate(ctx, api, prTemplatePaths)
+	if err != nil {
+		return res, err
+	}
+	issueTmpl, err := repoTemplate(ctx, api, issueTemplatePaths)
+	if err != nil {
+		return res, err
+	}
+
 	for _, l := range res.Labels {
 		if err := api.EnsureLabel(ctx, l, labelColor(l), labelDesc(l)); err != nil {
 			return res, fmt.Errorf("ensure label %q: %w", l, err)
@@ -154,7 +166,7 @@ func Open(ctx context.Context, api OpenAPI, opts OpenOptions) (OpenResult, error
 		return res, err
 	}
 	if issue == nil {
-		created, err := api.CreateIssue(ctx, issueTitle, issueBody(branch, base, title), res.Labels)
+		created, err := api.CreateIssue(ctx, issueTitle, issueBody(issueTmpl, branch, base, title), res.Labels)
 		if err != nil {
 			return res, fmt.Errorf("open tracking issue: %w", err)
 		}
@@ -162,7 +174,7 @@ func Open(ctx context.Context, api OpenAPI, opts OpenOptions) (OpenResult, error
 	}
 	res.Issue = issue
 
-	pull, err := api.CreatePull(ctx, title, branch, base, pullBody(issue.Number))
+	pull, err := api.CreatePull(ctx, title, branch, base, pullBody(prTmpl, ahead, branch, issue.Number))
 	if err != nil {
 		return res, fmt.Errorf("open pull request: %w", err)
 	}
@@ -237,8 +249,12 @@ func openIssue(ctx context.Context, api issueLister, title string) (*github.Issu
 	return nil, nil
 }
 
-func issueBody(branch, base, title string) string {
+func issueBody(tmpl, branch, base, title string) string {
 	var b strings.Builder
+	if strings.TrimSpace(tmpl) != "" {
+		b.WriteString(strings.TrimRight(tmpl, "\n"))
+		b.WriteString("\n\n---\n\n")
+	}
 	fmt.Fprintf(&b, "Tracks the pull request the developer bot opened for %s into %s.\n\n", code(branch), code(base))
 	b.WriteString("| | |\n| --- | --- |\n")
 	fmt.Fprintf(&b, "| Branch | %s |\n", code(branch))
@@ -247,8 +263,112 @@ func issueBody(branch, base, title string) string {
 	return b.String()
 }
 
-func pullBody(issue int) string {
-	return fmt.Sprintf("Opened by the developer bot on the first push to this branch.\n\nTracks #%d.\n", issue)
+// pullBody is the pull request body. When the repo has a PR template, its
+// What and Why sections are filled from the branch's commits and type and the
+// tracking footer is appended; otherwise a plain body is returned.
+func pullBody(tmpl string, commits []github.Commit, branch string, issue int) string {
+	footer := fmt.Sprintf("Opened by the developer bot on the first push to this branch.\n\nTracks #%d.\n", issue)
+	if strings.TrimSpace(tmpl) == "" {
+		return footer
+	}
+	filled := fillSections(tmpl, map[string]string{
+		"what": whatSection(commits),
+		"why":  whySection(branch),
+	})
+	return strings.TrimRight(filled, "\n") + "\n\n---\n\n" + footer
+}
+
+// whatSection lists the branch's commit subjects, oldest first, each in a code
+// span so an untrusted subject cannot break the markdown or mention anyone.
+func whatSection(commits []github.Commit) string {
+	var b strings.Builder
+	for _, c := range commits {
+		if s := subject(c.Message); s != "" {
+			fmt.Fprintf(&b, "* %s\n", code(s))
+		}
+	}
+	if b.Len() == 0 {
+		return "* _no commit subjects_"
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+// whySection is the branch's Conventional Commit type and name: a scaffold a
+// person refines, never invented intent.
+func whySection(branch string) string {
+	if t, _, ok := strings.Cut(branch, "/"); ok && conventionalTypes[t] {
+		return fmt.Sprintf("A %s change on %s.", code(t), code(branch))
+	}
+	return fmt.Sprintf("Changes on %s.", code(branch))
+}
+
+// fillSections replaces the body under each level-2 heading whose normalised
+// title is a key of content, leaving every other section untouched. It lets
+// the bot fill a template's What and Why without disturbing the rest.
+func fillSections(tmpl string, content map[string]string) string {
+	lines := strings.Split(tmpl, "\n")
+	var out []string
+	for i := 0; i < len(lines); {
+		title, isHeading := sectionTitle(lines[i])
+		body, fill := content[normalizeHeading(title)]
+		if !isHeading || !fill {
+			out = append(out, lines[i])
+			i++
+			continue
+		}
+		out = append(out, lines[i], "", strings.TrimRight(body, "\n"), "")
+		for i++; i < len(lines); i++ {
+			if _, next := sectionTitle(lines[i]); next {
+				break
+			}
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+// sectionTitle returns the title of a level-2 ("## ") markdown heading.
+func sectionTitle(line string) (string, bool) {
+	if t, ok := strings.CutPrefix(line, "## "); ok {
+		return strings.TrimSpace(t), true
+	}
+	return "", false
+}
+
+func normalizeHeading(title string) string {
+	return strings.ToLower(strings.TrimSpace(title))
+}
+
+// prTemplatePaths and issueTemplatePaths are the locations GitHub honours for
+// a repository's default pull request and issue templates, most specific
+// first. The bot uses the first one that exists so its pull request and
+// tracking issue match the repository's own docs.
+var prTemplatePaths = []string{
+	".github/PULL_REQUEST_TEMPLATE.md", ".github/pull_request_template.md",
+	"PULL_REQUEST_TEMPLATE.md", "pull_request_template.md",
+	"docs/PULL_REQUEST_TEMPLATE.md", "docs/pull_request_template.md",
+}
+
+var issueTemplatePaths = []string{
+	".github/ISSUE_TEMPLATE.md", ".github/issue_template.md",
+	"ISSUE_TEMPLATE.md", "docs/ISSUE_TEMPLATE.md",
+}
+
+// repoTemplate returns the first non-empty template among paths, or "" when
+// the repository has none. A missing file is skipped; any other error stops.
+func repoTemplate(ctx context.Context, api OpenAPI, paths []string) (string, error) {
+	for _, p := range paths {
+		body, err := api.FileContent(ctx, p)
+		if err != nil {
+			if github.IsNotFound(err) {
+				continue
+			}
+			return "", fmt.Errorf("read template %s: %w", p, err)
+		}
+		if strings.TrimSpace(body) != "" {
+			return body, nil
+		}
+	}
+	return "", nil
 }
 
 // OpenSummary is the markdown summary of an Open.

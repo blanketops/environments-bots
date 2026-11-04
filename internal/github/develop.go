@@ -17,9 +17,11 @@ package github
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 )
 
 // This file holds the calls developer makes beyond those releaser shares:
@@ -69,6 +71,7 @@ func (c *Client) AddLabels(ctx context.Context, number int, labels []string) err
 type PullDetail struct {
 	Number         int
 	Title          string
+	Body           string
 	State          string
 	HTMLURL        string
 	Head           string
@@ -82,6 +85,7 @@ func (c *Client) GetPull(ctx context.Context, number int) (PullDetail, error) {
 	var out struct {
 		Number         int    `json:"number"`
 		Title          string `json:"title"`
+		Body           string `json:"body"`
 		State          string `json:"state"`
 		HTMLURL        string `json:"html_url"`
 		Merged         bool   `json:"merged"`
@@ -95,9 +99,104 @@ func (c *Client) GetPull(ctx context.Context, number int) (PullDetail, error) {
 	}
 	err := c.do(ctx, http.MethodGet, c.repoPath(fmt.Sprintf("/pulls/%d", number)), nil, &out)
 	return PullDetail{
-		Number: out.Number, Title: out.Title, State: out.State, HTMLURL: out.HTMLURL,
+		Number: out.Number, Title: out.Title, Body: out.Body, State: out.State, HTMLURL: out.HTMLURL,
 		Head: out.Head.Ref, Base: out.Base.Ref, Merged: out.Merged, MergeCommitSHA: out.MergeCommitSHA,
 	}, err
+}
+
+// PullFile is one file changed in a pull request (GET /pulls/{number}/files).
+type PullFile struct {
+	SHA              string `json:"sha"`
+	Filename         string `json:"filename"`
+	Status           string `json:"status"` // added, modified, removed, renamed
+	Additions        int    `json:"additions"`
+	Deletions        int    `json:"deletions"`
+	Changes          int    `json:"changes"`
+	BlobURL          string `json:"blob_url"`
+	RawURL           string `json:"raw_url"`
+	PreviousFilename string `json:"previous_filename"`
+	Patch            string `json:"patch"` // diff hunk; empty for binary/oversized files
+}
+
+// GetPullFiles returns the files changed in a pull request. It follows the
+// Link header's next page until there is none.
+func (c *Client) GetPullFiles(ctx context.Context, number int) ([]PullFile, error) {
+	const perPage = 100
+	var all []PullFile
+	for page := 1; ; page++ {
+		q := url.Values{}
+		q.Set("per_page", fmt.Sprint(perPage))
+		q.Set("page", fmt.Sprint(page))
+		var batch []PullFile
+		_, err := c.doHeader(ctx, http.MethodGet, c.repoPath(fmt.Sprintf("/pulls/%d/files?%s", number, q.Encode())), nil, &batch)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, batch...)
+		if len(batch) < perPage {
+			break
+		}
+	}
+	return all, nil
+}
+
+// GetContents returns the decoded content of a file at path
+// (GET /repos/{owner}/{repo}/contents/{path}).
+func (c *Client) GetContents(ctx context.Context, path string) (string, error) {
+	q := url.Values{}
+	q.Set("ref", "HEAD")
+	var out struct {
+		Type     string `json:"type"`
+		Content  string `json:"content"`
+		Encoding string `json:"encoding"`
+		Size     int    `json:"size"`
+	}
+	err := c.do(ctx, http.MethodGet, c.repoPath("/contents/"+url.PathEscape(path)+"?"+q.Encode()), nil, &out)
+	if err != nil {
+		return "", err
+	}
+	switch out.Encoding {
+	case "base64":
+		decoded, err := base64.StdEncoding.DecodeString(out.Content)
+		if err != nil {
+			return "", fmt.Errorf("decode base64 content of %s: %w", path, err)
+		}
+		return string(decoded), nil
+	default:
+		return out.Content, nil
+	}
+}
+
+// Review is a pull request review (POST /pulls/{number}/reviews).
+type Review struct {
+	ID      int    `json:"id"`
+	State   string `json:"state"` // approved, changes_requested, comment
+	Body    string `json:"body"`
+	HTMLURL string `json:"html_url"`
+}
+
+// ReviewComment is an inline comment on a line of a changed file.
+type ReviewComment struct {
+	Path string
+	Line int
+	Body string
+}
+
+// CreateReview posts a review on a pull request. event is one of
+// APPROVE, REQUEST_CHANGES, or COMMENT. comments, when non-empty, are posted
+// as inline comments on the right (new-file) side of the diff.
+func (c *Client) CreateReview(ctx context.Context, number int, body, event string, comments []ReviewComment) (Review, error) {
+	in := map[string]any{"body": body, "event": event}
+	if len(comments) > 0 {
+		cs := make([]map[string]any, 0, len(comments))
+		for _, c := range comments {
+			cs = append(cs, map[string]any{"path": c.Path, "line": c.Line, "side": "RIGHT", "body": c.Body})
+		}
+		in["comments"] = cs
+	}
+	var out Review
+	err := c.do(ctx, http.MethodPost, c.repoPath(fmt.Sprintf("/pulls/%d/reviews", number)), in, &out)
+	return out, err
 }
 
 // FileAddition is a file written by CreateCommitOnBranch; Contents is
