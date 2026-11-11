@@ -95,12 +95,14 @@ func run(args []string, stdout, stderr io.Writer, getenv func(string) string) in
 
 // common are the flags both commands share.
 type common struct {
-	root, repo, apiURL, summary string
-	dryRun                      bool
+	root, repo, apiURL, summary, testsDir, exclude string
+	dryRun                                         bool
 }
 
 func (c *common) register(fs *flag.FlagSet, getenv func(string) string) {
 	fs.StringVar(&c.root, "root", ".", "repository root")
+	fs.StringVar(&c.testsDir, "tests-dir", "tests", "directory under -root to scan for *_test.go files; use \".\" for a repo whose tests live beside the source")
+	fs.StringVar(&c.exclude, "exclude", "", "comma-separated subtrees (relative to -root) never treated as test files (default <tests-dir>/data; e.g. \"vendor,.git\")")
 	fs.StringVar(&c.repo, "repo", getenv("GITHUB_REPOSITORY"), "repository as owner/name (default $GITHUB_REPOSITORY)")
 	fs.StringVar(&c.apiURL, "api-url", getenv("GITHUB_API_URL"), "GitHub API URL (default $GITHUB_API_URL, else https://api.github.com)")
 	fs.StringVar(&c.summary, "summary", getenv("GITHUB_STEP_SUMMARY"), "file to append the markdown summary to (default $GITHUB_STEP_SUMMARY)")
@@ -121,7 +123,11 @@ func (c *common) client(getenv func(string) string) (*github.Client, error) {
 }
 
 func (c *common) discover(layer string) ([]discover.File, error) {
-	return discover.Discover(c.root, discover.Options{Layer: layer})
+	opts := discover.Options{TestsDir: c.testsDir, Layer: layer}
+	if c.exclude != "" {
+		opts.Exclude = strings.Split(c.exclude, ",")
+	}
+	return discover.Discover(c.root, opts)
 }
 
 // emit prints the summary and appends it to the summary file, if any.

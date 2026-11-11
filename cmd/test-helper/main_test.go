@@ -208,6 +208,38 @@ func TestDryRunNeedsNoToken(t *testing.T) {
 	}
 }
 
+func TestSyncTestsDirBesideSource(t *testing.T) {
+	srv := githubtest.New("blanketops", "environments", "")
+	defer srv.Close()
+	root := t.TempDir()
+	write := func(p, content string) {
+		full := filepath.Join(root, p)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A library repo: tests live beside source, there is no tests/ dir, and
+	// vendor/ carries third-party *_test.go that must never be tracked.
+	write("go.mod", "module example.com/m\n\ngo 1.27.0\n")
+	write("core/engine_test.go", "package core\n\nimport \"testing\"\n\nfunc TestEngine(t *testing.T) {}\n")
+	write("vendor/dep/dep_test.go", "package dep\n\nimport \"testing\"\n\nfunc TestDep(t *testing.T) {}\n")
+
+	e := env{"GITHUB_REPOSITORY": "blanketops/environments", "GITHUB_API_URL": srv.URL}
+	code, stdout, stderr := runCmd(t, e, "sync", "-root", root, "-tests-dir", ".", "-exclude", "vendor", "-dry-run")
+	if code != 0 {
+		t.Fatalf("sync: code %d, stderr %q", code, stderr)
+	}
+	if !strings.Contains(stdout, "1 to create") {
+		t.Errorf("want exactly the source-side test file discovered (vendor excluded); stdout:\n%s", stdout)
+	}
+	if strings.Contains(stdout, "dep_test") {
+		t.Errorf("vendor/ test file must be excluded; stdout:\n%s", stdout)
+	}
+}
+
 func TestCommandFailures(t *testing.T) {
 	srv := githubtest.New("blanketops", "environments-tests", "")
 	defer srv.Close()
