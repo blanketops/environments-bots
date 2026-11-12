@@ -1,0 +1,6 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: admin-smoke
+data:
+  probe: "1794469099"
