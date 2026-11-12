@@ -131,13 +131,22 @@ func Sync(ctx context.Context, api SyncAPI, opts SyncOptions) (SyncResult, error
 	branch := "sync/manifests-" + slug(destPath) + "-" + short(baseSHA)
 	res.Branch = branch
 
-	// Clear any branch a previous interrupted run left behind so CreateBranch
-	// does not fail on an existing ref.
-	if err := api.DeleteBranch(ctx, branch); err != nil && !github.IsNotFound(err) {
-		return res, fmt.Errorf("clear stale branch %s: %w", branch, err)
-	}
+	// Create the sync branch at the base head. A branch a previous interrupted
+	// run left behind already exists (HTTP 422 "Reference already exists");
+	// delete and recreate it at the base so the commit lands cleanly. A plain
+	// pre-emptive delete would be wrong: deleting a ref that is not there is a
+	// 422 "Reference does not exist" on GitHub, not a 404, so the normal
+	// no-stale-branch case would fail.
 	if err := api.CreateBranch(ctx, branch, baseSHA); err != nil {
-		return res, fmt.Errorf("create branch %s: %w", branch, err)
+		if !github.IsAlreadyExists(err) {
+			return res, fmt.Errorf("create branch %s: %w", branch, err)
+		}
+		if err := api.DeleteBranch(ctx, branch); err != nil {
+			return res, fmt.Errorf("delete stale branch %s: %w", branch, err)
+		}
+		if err := api.CreateBranch(ctx, branch, baseSHA); err != nil {
+			return res, fmt.Errorf("recreate branch %s: %w", branch, err)
+		}
 	}
 
 	adds := make([]github.FileAddition, len(changed))

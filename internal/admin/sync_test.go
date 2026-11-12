@@ -152,6 +152,33 @@ func TestSync_NoAutoMergeLeavesPullOpen(t *testing.T) {
 	}
 }
 
+func TestSync_RecreatesStaleBranch(t *testing.T) {
+	s := githubtest.New(testOwner, testRepo, testToken)
+	defer s.Close()
+	s.Branches["main"] = "basesha0123456789"
+	// A branch a previous interrupted run left behind, at the deterministic
+	// sync name. CreateBranch must see "already exists" (422), delete it, and
+	// recreate at the base — not fail.
+	s.Branches["sync/manifests-config-crd-bases-basesha"] = "staleoid"
+
+	res, err := Sync(context.Background(), newAPI(t, s), SyncOptions{
+		DestPath: "config/crd/bases", Base: "main",
+		Files: []File{{Name: "a.yaml", Content: "A"}}, AutoMerge: false,
+	})
+	if err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	if res.Branch != "sync/manifests-config-crd-bases-basesha" {
+		t.Fatalf("branch = %q", res.Branch)
+	}
+	if res.Pull == nil || len(s.Pulls) != 1 {
+		t.Fatalf("expected the stale branch recreated and a PR opened, got %+v", res)
+	}
+	if len(s.CommitsOnBranch) != 1 {
+		t.Fatalf("expected one signed commit, got %d", len(s.CommitsOnBranch))
+	}
+}
+
 func TestSync_MergeFailureSurfaces(t *testing.T) {
 	s := githubtest.New(testOwner, testRepo, testToken)
 	defer s.Close()
