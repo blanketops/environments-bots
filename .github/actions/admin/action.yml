@@ -1,0 +1,137 @@
+# =============================================================================
+# admin — run cmd/admin in any BlanketOps repository
+#
+# Mints an installation token of the BlanketOps Environments Admin App scoped
+# to the DESTINATION repository (where the manifests are written, e.g.
+# environments-install), downloads the admin binary of the environments-bots
+# release this action is used at (uses: ...@vX.Y.Z runs admin vX.Y.Z), verifies
+# its Sigstore bundle against that release's workflow identity with cosign, and
+# runs "admin sync". A binary that does not verify is never run.
+#
+#   - uses: blanketops/environments-bots/.github/actions/admin@v0.1.1
+#     with:
+#       source-dir: config/crd/bases          # generated files in THIS checkout
+#       dest-path: config/crd/bases            # where they land in the dest repo
+#       label: "CRDs from environments-api ${{ github.ref_name }}"
+#       client-id: ${{ vars.ADMIN_CLIENT_ID }}
+#       private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+#
+# The Admin App needs Contents: write and Pull requests: write on the dest repo.
+# cosign comes from the runner image (zenith-runner-toolchain).
+# =============================================================================
+
+name: admin
+description: Run the BlanketOps admin bot's manifest sync as the Admin App, from a verified environments-bots release
+inputs:
+  source-dir:
+    description: "Directory in THIS checkout holding the generated .yaml manifests to propagate"
+    required: true
+  dest-path:
+    description: "Directory in the destination repository the files land in (e.g. config/crd/bases)"
+    required: true
+  dest-repo:
+    description: "Destination repository name (owner is this org)"
+    required: false
+    default: environments-install
+  base:
+    description: "Destination branch to sync into"
+    required: false
+    default: main
+  label:
+    description: "Human label for the commit and pull request"
+    required: false
+    default: ""
+  auto-merge:
+    description: "Merge the sync pull request as soon as it is opened"
+    required: false
+    default: "true"
+  dry-run:
+    description: "Read only: report what would change, write nothing"
+    required: false
+    default: "false"
+  client-id:
+    description: "Admin App client ID"
+    required: true
+  private-key:
+    description: "Admin App private key"
+    required: true
+  admin-version:
+    description: "environments-bots release to run (default: the tag this action is used at)"
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Admin App token
+      id: token
+      uses: actions/create-github-app-token@v3
+      with:
+        client-id: ${{ inputs.client-id }}
+        private-key: ${{ inputs.private-key }}
+        owner: ${{ github.repository_owner }}
+        repositories: ${{ inputs.dest-repo }}
+
+    - name: Download and verify admin
+      shell: bash
+      env:
+        PINNED: ${{ inputs.admin-version }}
+        ACTION_REF: ${{ github.action_ref }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        # The version: the input, else the tag this action is used at. The
+        # runner checks the action out under .../environments-bots/<ref>/,
+        # which also holds when github.action_ref is empty in a composite.
+        VERSION=${PINNED:-$ACTION_REF}
+        if [ -z "$VERSION" ]; then
+          rest=${ACTION_PATH#*/environments-bots/}
+          VERSION=${rest%%/*}
+        fi
+        if ! [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "::error::admin version '${VERSION}' is not a release tag: use the action at @vX.Y.Z or set admin-version"
+          exit 1
+        fi
+        case "$(uname -m)" in
+          x86_64) arch=amd64 ;;
+          aarch64 | arm64) arch=arm64 ;;
+          *) echo "::error::unsupported architecture $(uname -m)"; exit 1 ;;
+        esac
+        dir="${RUNNER_TEMP}/admin-${VERSION}"
+        mkdir -p "$dir"
+        base="https://github.com/blanketops/environments-bots/releases/download/${VERSION}"
+        curl -fsSL -o "${dir}/admin" "${base}/admin-linux-${arch}"
+        curl -fsSL -o "${dir}/admin.sigstore.json" "${base}/admin-linux-${arch}.sigstore.json"
+        cosign verify-blob --bundle "${dir}/admin.sigstore.json" \
+          --certificate-identity "https://github.com/blanketops/environments-bots/.github/workflows/release.yml@refs/tags/${VERSION}" \
+          --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+          "${dir}/admin"
+        chmod +x "${dir}/admin"
+        got=$("${dir}/admin" version)
+        if [ "$got" != "$VERSION" ]; then
+          echo "::error::downloaded admin reports ${got}, want ${VERSION}"
+          exit 1
+        fi
+        echo "ADMIN_BIN=${dir}/admin" >> "$GITHUB_ENV"
+
+    - name: admin sync
+      shell: bash
+      env:
+        GH_TOKEN: ${{ steps.token.outputs.token }}
+        DEST_REPO: ${{ github.repository_owner }}/${{ inputs.dest-repo }}
+        SOURCE_DIR: ${{ inputs.source-dir }}
+        DEST_PATH: ${{ inputs.dest-path }}
+        BASE: ${{ inputs.base }}
+        LABEL: ${{ inputs.label }}
+        AUTO_MERGE: ${{ inputs.auto-merge }}
+        DRY_RUN: ${{ inputs.dry-run }}
+      run: |
+        set -euo pipefail
+        args=(sync -repo "$DEST_REPO" -source-dir "$SOURCE_DIR" -dest-path "$DEST_PATH" -base "$BASE")
+        if [ -n "$LABEL" ]; then
+          args+=(-label "$LABEL")
+        fi
+        args+=("-auto-merge=${AUTO_MERGE}")
+        if [ "$DRY_RUN" = "true" ]; then
+          args+=(-dry-run)
+        fi
+        "$ADMIN_BIN" "${args[@]}"
