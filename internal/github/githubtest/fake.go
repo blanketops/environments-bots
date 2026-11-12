@@ -235,6 +235,7 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	case s.handleDevelop(w, r, rest):
 	case s.handleClean(w, r, rest):
 	case s.handleRelease(w, r, rest):
+	case s.handleAdmin(w, r, rest):
 	case r.Method == http.MethodGet && strings.HasPrefix(rest, "/pulls/") && !strings.HasSuffix(rest, "/files") && !strings.HasSuffix(rest, "/reviews"):
 		n, _ := strconv.Atoi(strings.TrimPrefix(rest, "/pulls/"))
 		for _, p := range s.Pulls {
